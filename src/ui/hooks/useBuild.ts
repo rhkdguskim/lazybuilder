@@ -1,21 +1,22 @@
-import { useState, useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore.js';
 import { BuildService } from '../../application/BuildService.js';
 import type { BuildProfile } from '../../domain/models/BuildProfile.js';
-import type { BuildResult } from '../../domain/models/BuildResult.js';
 import type { ProjectInfo } from '../../domain/models/ProjectInfo.js';
-import type { BuildStatus } from '../../domain/enums.js';
 import type { LogEntry } from '../../domain/models/LogEntry.js';
 
 export function useBuild() {
   const snapshot = useAppStore(s => s.snapshot);
+  const status = useAppStore(s => s.buildStatus);
+  const result = useAppStore(s => s.buildResult);
+  const setBuildStatus = useAppStore(s => s.setBuildStatus);
+  const setBuildStartTime = useAppStore(s => s.setBuildStartTime);
   const setBuildResult = useAppStore(s => s.setBuildResult);
   const addBuildHistory = useAppStore(s => s.addBuildHistory);
   const appendLogEntries = useAppStore(s => s.appendLogEntries);
   const clearLogs = useAppStore(s => s.clearLogs);
+  const setBuildCancelFn = useAppStore(s => s.setBuildCancelFn);
 
-  const [status, setStatus] = useState<BuildStatus>('idle');
-  const [result, setResult] = useState<BuildResult | null>(null);
   const serviceRef = useRef<BuildService | null>(null);
 
   // Batch log entries for performance (16ms debounce)
@@ -41,12 +42,17 @@ export function useBuild() {
     if (!snapshot) return;
 
     clearLogs();
-    setStatus('running');
-    setResult(null);
+    setBuildStatus('running');
+    setBuildStartTime(Date.now());
     setBuildResult(null);
 
     const service = new BuildService(snapshot);
     serviceRef.current = service;
+
+    // Register cancel function globally so quit can use it
+    setBuildCancelFn(async () => {
+      await service.cancel();
+    });
 
     try {
       const buildResult = await service.execute(project, profile, snapshot, onLogEntry);
@@ -54,21 +60,25 @@ export function useBuild() {
       // Flush remaining logs
       flushLogs();
 
-      setResult(buildResult);
       setBuildResult(buildResult);
       addBuildHistory(buildResult);
-      setStatus(buildResult.status === 'success' ? 'success' : 'failure');
-    } catch (err) {
-      setStatus('failure');
+      setBuildStatus(buildResult.status === 'success' ? 'success' : 'failure');
+    } catch {
+      setBuildStatus('failure');
+    } finally {
+      setBuildCancelFn(null);
+      setBuildStartTime(null);
     }
-  }, [snapshot, clearLogs, setBuildResult, addBuildHistory, onLogEntry, flushLogs]);
+  }, [snapshot, clearLogs, setBuildStatus, setBuildStartTime, setBuildResult, addBuildHistory, onLogEntry, flushLogs, setBuildCancelFn]);
 
   const cancel = useCallback(async () => {
     if (serviceRef.current) {
       await serviceRef.current.cancel();
-      setStatus('cancelled');
+      setBuildCancelFn(null);
+      setBuildStatus('cancelled');
+      setBuildStartTime(null);
     }
-  }, []);
+  }, [setBuildCancelFn, setBuildStatus, setBuildStartTime]);
 
   const resolveCommand = useCallback((project: ProjectInfo, profile: BuildProfile) => {
     if (!snapshot) return null;

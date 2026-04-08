@@ -60,7 +60,7 @@ export const OverviewTab: React.FC = () => {
   ];
 
   return (
-    <Box flexDirection="column" padding={1}>
+    <Box flexDirection="column" padding={1} flexGrow={1} overflowY="hidden">
       <Box flexDirection="row">
         {/* Left: Status */}
         <Box flexDirection="column" width="55%" paddingRight={2}>

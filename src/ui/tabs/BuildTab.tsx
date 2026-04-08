@@ -9,10 +9,10 @@ import type { BuildProfile } from '../../domain/models/BuildProfile.js';
 import type { BuildSystem } from '../../domain/enums.js';
 
 type FocusArea = 'targets' | 'settings' | 'action';
-type SettingField = 'configuration' | 'platform' | 'verbosity' | 'devshell';
+type SettingField = 'configuration' | 'platform' | 'verbosity' | 'parallel' | 'devshell';
 
 const FOCUS_AREAS: FocusArea[] = ['targets', 'settings', 'action'];
-const SETTING_FIELDS: SettingField[] = ['configuration', 'platform', 'verbosity', 'devshell'];
+const SETTING_FIELDS: SettingField[] = ['configuration', 'platform', 'verbosity', 'parallel', 'devshell'];
 const VERBOSITIES = ['quiet', 'minimal', 'normal', 'detailed', 'diagnostic'] as const;
 
 export const BuildTab: React.FC = () => {
@@ -47,13 +47,25 @@ export const BuildTab: React.FC = () => {
     return list;
   }, [projects, solutions]);
 
-  const [targetIdx, setTargetIdx] = useState(0);
-  const [configIdx, setConfigIdx] = useState(0);
-  const [platformIdx, setPlatformIdx] = useState(0);
-  const [verbosityIdx, setVerbosityIdx] = useState(1); // minimal
-  const [useDevShell, setUseDevShell] = useState(false);
+  // Build settings from store (persisted across tab switches)
+  const targetIdx = useAppStore(s => s.buildTargetIdx);
+  const setTargetIdx = useAppStore(s => s.setBuildTargetIdx);
+  const configIdx = useAppStore(s => s.buildConfigIdx);
+  const setConfigIdx = useAppStore(s => s.setBuildConfigIdx);
+  const platformIdx = useAppStore(s => s.buildPlatformIdx);
+  const setPlatformIdx = useAppStore(s => s.setBuildPlatformIdx);
+  const verbosityIdx = useAppStore(s => s.buildVerbosityIdx);
+  const setVerbosityIdx = useAppStore(s => s.setBuildVerbosityIdx);
+  const parallelBuild = useAppStore(s => s.buildParallel);
+  const setParallelBuild = useAppStore(s => s.setBuildParallel);
+  const useDevShell = useAppStore(s => s.buildDevShell);
+  const setUseDevShell = useAppStore(s => s.setBuildDevShell);
+  const buildStartTime = useAppStore(s => s.buildStartTime);
+
+  // Local-only UI state (OK to reset on tab switch)
   const [focusArea, setFocusArea] = useState<FocusArea>('targets');
   const [activeSetting, setActiveSetting] = useState<SettingField>('configuration');
+  const [elapsedMs, setElapsedMs] = useState(0);
 
   // Current target's configurations
   const currentTarget = targets[targetIdx];
@@ -117,12 +129,12 @@ export const BuildTab: React.FC = () => {
       buildSystem: currentTarget.buildSystem,
       configuration: uniqueConfigs[configIdx] ?? 'Debug',
       platform: uniquePlatforms[platformIdx] ?? 'Any CPU',
-      extraArguments: [],
+      extraArguments: parallelBuild ? ['/m'] : [],
       useDeveloperShell: useDevShell,
       enableBinaryLog: false,
       verbosity: VERBOSITIES[verbosityIdx]!,
     };
-  }, [currentTarget, configIdx, platformIdx, verbosityIdx, useDevShell]);
+  }, [currentTarget, configIdx, platformIdx, verbosityIdx, parallelBuild, useDevShell]);
 
   // Resolve command preview
   const commandPreview = useMemo(() => {
@@ -135,22 +147,41 @@ export const BuildTab: React.FC = () => {
   const runBuild = () => {
     if (!currentTarget || !profile) return;
     const proj = currentTarget.project ?? currentTarget.solution?.projects[0];
-    if (proj) start(proj, profile);
+    if (proj) {
+      setElapsedMs(0);
+      start(proj, profile);
+    }
+  };
+
+  // Elapsed time tracker during build
+  useEffect(() => {
+    if (status !== 'running' || !buildStartTime) return;
+    const timer = setInterval(() => {
+      setElapsedMs(Date.now() - buildStartTime);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [status, buildStartTime]);
+
+  const moveToTargetBoundary = (direction: 'top' | 'bottom') => {
+    setTargetIdx(direction === 'top' ? 0 : Math.max(0, targets.length - 1));
   };
 
   const adjustSetting = (dir: 1 | -1) => {
     switch (activeSetting) {
       case 'configuration':
-        setConfigIdx(i => Math.max(0, Math.min(uniqueConfigs.length - 1, i + dir)));
+        setConfigIdx(Math.max(0, Math.min(uniqueConfigs.length - 1, configIdx + dir)));
         break;
       case 'platform':
-        setPlatformIdx(i => Math.max(0, Math.min(uniquePlatforms.length - 1, i + dir)));
+        setPlatformIdx(Math.max(0, Math.min(uniquePlatforms.length - 1, platformIdx + dir)));
         break;
       case 'verbosity':
-        setVerbosityIdx(i => Math.max(0, Math.min(VERBOSITIES.length - 1, i + dir)));
+        setVerbosityIdx(Math.max(0, Math.min(VERBOSITIES.length - 1, verbosityIdx + dir)));
+        break;
+      case 'parallel':
+        setParallelBuild(!parallelBuild);
         break;
       case 'devshell':
-        setUseDevShell(v => !v);
+        setUseDevShell(!useDevShell);
         break;
     }
   };
@@ -176,24 +207,44 @@ export const BuildTab: React.FC = () => {
     }
 
     if (focusArea === 'targets') {
+      if (input === 'g') {
+        moveToTargetBoundary('top');
+        return;
+      }
+      if (input === 'G') {
+        moveToTargetBoundary('bottom');
+        return;
+      }
       if (key.upArrow || input === 'k') {
-        setTargetIdx(i => Math.max(0, i - 1));
+        setTargetIdx(Math.max(0, targetIdx - 1));
         return;
       }
       if (key.downArrow || input === 'j') {
-        setTargetIdx(i => Math.min(targets.length - 1, i + 1));
+        setTargetIdx(Math.min(targets.length - 1, targetIdx + 1));
         return;
       }
-      if (key.return) {
+      if (key.rightArrow || input === 'l' || key.return) {
         setFocusArea('settings');
         return;
       }
     }
 
     if (focusArea === 'settings') {
+      if (input === 'g') {
+        setActiveSetting('configuration');
+        return;
+      }
+      if (input === 'G') {
+        setActiveSetting('devshell');
+        return;
+      }
       if (key.upArrow || input === 'k') {
         const idx = SETTING_FIELDS.indexOf(activeSetting);
-        if (idx > 0) setActiveSetting(SETTING_FIELDS[idx - 1]!);
+        if (idx > 0) {
+          setActiveSetting(SETTING_FIELDS[idx - 1]!);
+        } else {
+          setFocusArea('targets');
+        }
         return;
       }
       if (key.downArrow || input === 'j') {
@@ -202,16 +253,24 @@ export const BuildTab: React.FC = () => {
         return;
       }
       if (key.leftArrow || input === 'h') {
+        if (activeSetting === 'configuration') {
+          setFocusArea('targets');
+          return;
+        }
         adjustSetting(-1);
         return;
       }
       if (key.rightArrow || input === 'l') {
+        if (activeSetting === 'devshell') {
+          setFocusArea('action');
+          return;
+        }
         adjustSetting(1);
         return;
       }
       if (input === ' ') {
         if (activeSetting === 'devshell') {
-          setUseDevShell(v => !v);
+          setUseDevShell(!useDevShell);
         } else {
           setFocusArea('action');
         }
@@ -221,11 +280,35 @@ export const BuildTab: React.FC = () => {
         setFocusArea('action');
         return;
       }
+      if (key.escape) {
+        setFocusArea('targets');
+        return;
+      }
     }
 
-    if (focusArea === 'action' && (key.return || input === ' ')) {
-      runBuild();
-      return;
+    if (focusArea === 'action') {
+      if (key.downArrow || input === 'j' || input === 'G') {
+        return;
+      }
+      if (key.upArrow || input === 'k') {
+        setFocusArea('settings');
+        setActiveSetting('devshell');
+        return;
+      }
+      if (key.leftArrow || input === 'h') {
+        setFocusArea('settings');
+        setActiveSetting('devshell');
+        return;
+      }
+      if (key.escape) {
+        setFocusArea('settings');
+        setActiveSetting('devshell');
+        return;
+      }
+      if (key.return || input === ' ') {
+        runBuild();
+        return;
+      }
     }
 
     if (input === '\x1b[15~' || input === 'b' || (key.ctrl && input === 'b')) {
@@ -241,37 +324,56 @@ export const BuildTab: React.FC = () => {
     );
   }
 
+  // Status line for build state
+  const statusLine = status === 'running'
+    ? `Building... ${formatDuration(elapsedMs)}`
+    : result && status !== 'idle'
+      ? `${result.status === 'success' ? 'OK' : 'FAIL'} ${formatDuration(result.durationMs)} | ${result.errorCount}E ${result.warningCount}W`
+      : '';
+
   return (
-    <Box flexDirection="row" padding={1} flexGrow={1}>
-      <Box flexDirection="column" width="38%" paddingRight={2}>
-        <Text bold color="cyan">{'─── Targets ───'}</Text>
-        <Box borderStyle="round" borderColor={focusArea === 'targets' ? 'cyan' : 'gray'} paddingX={1} paddingY={0} flexDirection="column">
-          <Text color="gray">↑↓ or j/k to move, Enter to configure</Text>
+    <Box flexDirection="column" flexGrow={1} overflowY="hidden" padding={1}>
+      {/* Top bar: action + status */}
+      <Box flexDirection="row" justifyContent="space-between" flexShrink={0}>
+        <Box>
+          <Text inverse={focusArea === 'action'} color={status === 'running' ? 'red' : 'green'} bold>
+            {status === 'running' ? ' ■ Cancel (Esc) ' : ' ▶ Build (Enter) '}
+          </Text>
+          {status === 'running' && <Text color="yellow"> {formatDuration(elapsedMs)}</Text>}
+          {result && status !== 'running' && status !== 'idle' && (
+            <Text color={result.status === 'success' ? 'green' : 'red'}>
+              {' '}{result.status === 'success' ? '✔' : '✘'} {formatDuration(result.durationMs)} {result.errorCount}E {result.warningCount}W
+            </Text>
+          )}
+        </Box>
+        <Text color="gray" wrap="truncate">{commandPreview ? `$ ${commandPreview}` : ''}</Text>
+      </Box>
+
+      {/* Main: left config + right output */}
+      <Box flexDirection="row" flexGrow={1} overflowY="hidden" marginTop={1}>
+        {/* Left: Targets + Settings */}
+        <Box flexDirection="column" width="35%" paddingRight={1} overflowY="hidden">
+          <Text bold color={focusArea === 'targets' ? 'cyan' : 'gray'}>Targets</Text>
           <ScrollableList
             selectedIdx={targetIdx}
             maxVisible={8}
+            onSelect={setTargetIdx}
             items={targets.map((target, i) => (
-              <Text key={target.path} inverse={i === targetIdx}>
-                {i === targetIdx ? ' ▶ ' : '   '}
-                {target.label}
+              <Text key={target.path} inverse={i === targetIdx} wrap="truncate">
+                {i === targetIdx ? '▶ ' : '  '}{target.label}
               </Text>
             ))}
           />
-        </Box>
 
-        <Box height={1} />
-        <Text bold color="cyan">{'─── Build Setup ───'}</Text>
-        <Box borderStyle="round" borderColor={focusArea === 'settings' ? 'cyan' : 'gray'} paddingX={1} paddingY={0} flexDirection="column">
-          <Text color="gray">Tab to switch section, h/l to change value</Text>
-          <Box height={1} />
+          <Box marginTop={1} />
+          <Text bold color={focusArea === 'settings' ? 'cyan' : 'gray'}>Settings</Text>
           <FieldRow
-            label="Configuration"
+            label="Config"
             value={uniqueConfigs[configIdx] ?? 'Debug'}
             active={focusArea === 'settings' && activeSetting === 'configuration'}
             options={uniqueConfigs}
             selectedIdx={configIdx}
           />
-
           <FieldRow
             label="Platform"
             value={uniquePlatforms[platformIdx] ?? 'Any CPU'}
@@ -279,80 +381,52 @@ export const BuildTab: React.FC = () => {
             options={uniquePlatforms}
             selectedIdx={platformIdx}
           />
-
           <FieldRow
-            label="Verbosity"
+            label="Verbose"
             value={VERBOSITIES[verbosityIdx]!}
             active={focusArea === 'settings' && activeSetting === 'verbosity'}
             options={[...VERBOSITIES]}
             selectedIdx={verbosityIdx}
           />
-
           <FieldRow
-            label="Dev Shell"
+            label="Parallel"
+            value={parallelBuild ? 'ON' : 'OFF'}
+            active={focusArea === 'settings' && activeSetting === 'parallel'}
+          />
+          <FieldRow
+            label="DevShell"
             value={useDevShell ? 'ON' : 'OFF'}
             active={focusArea === 'settings' && activeSetting === 'devshell'}
-            hint={useDevShell ? 'vcvarsall.bat will be used' : 'space to toggle'}
           />
         </Box>
 
-        <Box marginTop={1}>
-          <Text inverse={focusArea === 'action'} color={focusArea === 'action' ? 'green' : 'gray'}>
-            {status === 'running' ? '  ■ Cancel (Esc)  ' : '  ▶ Build (Enter)  '}
-          </Text>
-        </Box>
+        {/* Right: Live output */}
+        <Box flexDirection="column" flexGrow={1} borderStyle="single" borderColor="gray" paddingX={1} overflowY="hidden">
+          <Box flexDirection="row" justifyContent="space-between" flexShrink={0}>
+            <Text bold color="cyan">Output</Text>
+            <Text color="gray">{logEntries.length} lines</Text>
+          </Box>
 
-        <Box height={1} />
-        <Text bold color="cyan">{'─── Command Preview ───'}</Text>
-        <Box marginTop={1}>
-          <Text color="gray" wrap="wrap">{commandPreview || 'Select a target to preview command'}</Text>
+          <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+            {status === 'idle' && logEntries.length === 0 && (
+              <Text color="gray">Build output will appear here</Text>
+            )}
+            {logEntries.slice(-25).map((entry) => (
+              <Text key={entry.index} color={
+                entry.level === 'error' ? 'red' :
+                entry.level === 'warning' ? 'yellow' :
+                entry.source === 'stderr' ? 'red' : undefined
+              } wrap="truncate">
+                {entry.text}
+              </Text>
+            ))}
+          </Box>
         </Box>
-
-        {/* Build result */}
-        {result && (
-          <>
-            <Box height={1} />
-            <Text bold color={result.status === 'success' ? 'green' : 'red'}>
-              {'─── Result: '}{result.status.toUpperCase()}{' ───'}
-            </Text>
-            <Text>Exit code: {result.exitCode}</Text>
-            <Text>Duration: {result.durationMs}ms</Text>
-            <Text color="red">Errors: {result.errorCount}</Text>
-            <Text color="yellow">Warnings: {result.warningCount}</Text>
-          </>
-        )}
       </Box>
 
-      {/* Right: Live output */}
-      <Box flexDirection="column" flexGrow={1} borderStyle="single" paddingX={1}>
-        <Text bold color="cyan">Output</Text>
-        {currentTarget && (
-          <Text color="gray" wrap="truncate">
-            {currentTarget.buildSystem} | {currentTarget.path}
-          </Text>
-        )}
-        {status === 'running' && <ProgressPanel label="Building..." status="scanning" />}
-        {status === 'idle' && logEntries.length === 0 && <Text color="gray">Build output will appear here</Text>}
-
-        <Box flexDirection="column" flexGrow={1} overflowY="hidden">
-          {logEntries.slice(-30).map((entry, i) => (
-            <Text key={entry.index} color={
-              entry.level === 'error' ? 'red' :
-              entry.level === 'warning' ? 'yellow' :
-              entry.source === 'stderr' ? 'red' : undefined
-            } wrap="truncate">
-              {entry.text}
-            </Text>
-          ))}
-        </Box>
-
-        {logEntries.length > 30 && (
-          <Text color="gray">... showing last 30 of {logEntries.length} lines (see Logs tab for full output)</Text>
-        )}
-
-        <Box marginTop={1}>
-          <Text color="gray">Tab: section | ↑↓: move | h/l: change | Space/Enter: select/build | b: build now</Text>
-        </Box>
+      {/* Bottom hints */}
+      <Box flexShrink={0}>
+        <Text color="gray">Tab: section | j/k ↑↓: move | h/l ←→: change | Enter/b: build | Esc: cancel</Text>
       </Box>
     </Box>
   );
@@ -395,3 +469,17 @@ const FieldRow: React.FC<FieldRowProps> = ({ label, value, active, hint, options
     </Box>
   );
 };
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  }
+  return `${seconds}.${Math.floor((ms % 1000) / 100)}s`;
+}

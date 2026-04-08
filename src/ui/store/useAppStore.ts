@@ -4,6 +4,7 @@ import type { ProjectInfo, SolutionInfo } from '../../domain/models/ProjectInfo.
 import type { DiagnosticItem } from '../../domain/models/DiagnosticItem.js';
 import type { BuildResult } from '../../domain/models/BuildResult.js';
 import type { LogEntry } from '../../domain/models/LogEntry.js';
+import type { BuildStatus } from '../../domain/enums.js';
 
 export type TabId = 'overview' | 'environment' | 'projects' | 'build' | 'diagnostics' | 'logs' | 'history' | 'settings';
 export type ScanStatus = 'idle' | 'scanning' | 'done' | 'error';
@@ -31,10 +32,32 @@ interface AppState {
   setDiagnostics: (items: DiagnosticItem[]) => void;
 
   // Build
+  buildStatus: BuildStatus;
+  buildStartTime: number | null;
   buildResult: BuildResult | null;
   buildHistory: BuildResult[];
+  setBuildStatus: (status: BuildStatus) => void;
+  setBuildStartTime: (time: number | null) => void;
   setBuildResult: (result: BuildResult | null) => void;
   addBuildHistory: (result: BuildResult) => void;
+
+  // Build settings (persisted across tab switches)
+  buildTargetIdx: number;
+  buildConfigIdx: number;
+  buildPlatformIdx: number;
+  buildVerbosityIdx: number;
+  buildParallel: boolean;
+  buildDevShell: boolean;
+  setBuildTargetIdx: (idx: number) => void;
+  setBuildConfigIdx: (idx: number) => void;
+  setBuildPlatformIdx: (idx: number) => void;
+  setBuildVerbosityIdx: (idx: number) => void;
+  setBuildParallel: (v: boolean) => void;
+  setBuildDevShell: (v: boolean) => void;
+
+  // Build cancel (for quit cleanup)
+  buildCancelFn: (() => Promise<void>) | null;
+  setBuildCancelFn: (fn: (() => Promise<void>) | null) => void;
 
   // Logs
   logEntries: LogEntry[];
@@ -67,12 +90,34 @@ export const useAppStore = create<AppState>((set) => ({
   setDiagnostics: (items) => set({ diagnostics: items }),
 
   // Build
+  buildStatus: 'idle',
+  buildStartTime: null,
   buildResult: null,
   buildHistory: [],
+  setBuildStatus: (status) => set({ buildStatus: status }),
+  setBuildStartTime: (time) => set({ buildStartTime: time }),
   setBuildResult: (result) => set({ buildResult: result }),
   addBuildHistory: (result) => set((state) => ({
     buildHistory: [...state.buildHistory, result].slice(-100),
   })),
+
+  // Build settings
+  buildTargetIdx: 0,
+  buildConfigIdx: 0,
+  buildPlatformIdx: 0,
+  buildVerbosityIdx: 1,
+  buildParallel: true,
+  buildDevShell: false,
+  setBuildTargetIdx: (idx) => set({ buildTargetIdx: idx }),
+  setBuildConfigIdx: (idx) => set({ buildConfigIdx: idx }),
+  setBuildPlatformIdx: (idx) => set({ buildPlatformIdx: idx }),
+  setBuildVerbosityIdx: (idx) => set({ buildVerbosityIdx: idx }),
+  setBuildParallel: (v) => set({ buildParallel: v }),
+  setBuildDevShell: (v) => set({ buildDevShell: v }),
+
+  // Build cancel
+  buildCancelFn: null,
+  setBuildCancelFn: (fn) => set({ buildCancelFn: fn }),
 
   // Logs
   logEntries: [],

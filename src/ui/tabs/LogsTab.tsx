@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
+import { reduceLogNavigation } from '../navigation/logNavigation.js';
 
 type LogFilter = 'all' | 'error' | 'warning' | 'stderr';
 const FILTERS: Array<{ label: string; value: LogFilter }> = [
@@ -34,6 +35,12 @@ export const LogsTab: React.FC = () => {
     }
   }, [following, maxOffset, scrollOffset]);
 
+  useEffect(() => {
+    if (following) {
+      setScrollOffset(maxOffset);
+    }
+  }, [following, maxOffset]);
+
   // Auto-follow
   const effectiveOffset = following ? maxOffset : Math.min(scrollOffset, maxOffset);
   const visible = filtered.slice(effectiveOffset, effectiveOffset + windowSize);
@@ -42,22 +49,36 @@ export const LogsTab: React.FC = () => {
   const warnCount = logEntries.filter(e => e.level === 'warning').length;
 
   useInput((input, key) => {
-    if (key.tab) setFilterIdx(i => (i + 1) % FILTERS.length);
+    if (key.tab || input === 'l') setFilterIdx(i => (i + 1) % FILTERS.length);
+    if (input === 'h') setFilterIdx(i => (i - 1 + FILTERS.length) % FILTERS.length);
+    if (input === 'g') {
+      const next = reduceLogNavigation({ following, scrollOffset, maxOffset }, 'top');
+      setFollowing(next.following);
+      setScrollOffset(next.scrollOffset);
+      return;
+    }
+    if (input === 'G') {
+      const next = reduceLogNavigation({ following, scrollOffset, maxOffset }, 'bottom');
+      setFollowing(next.following);
+      setScrollOffset(next.scrollOffset);
+      return;
+    }
     if (key.upArrow || input === 'k') {
-      setFollowing(false);
-      setScrollOffset(o => Math.max(0, o - 1));
+      const next = reduceLogNavigation({ following, scrollOffset, maxOffset }, 'up');
+      setFollowing(next.following);
+      setScrollOffset(next.scrollOffset);
+      return;
     }
     if (key.downArrow || input === 'j') {
-      setScrollOffset(o => {
-        const next = Math.min(maxOffset, o + 1);
-        if (next >= maxOffset) setFollowing(true);
-        return next;
-      });
+      const next = reduceLogNavigation({ following, scrollOffset, maxOffset }, 'down');
+      setFollowing(next.following);
+      setScrollOffset(next.scrollOffset);
+      return;
     }
-    if (input === 'f') setFollowing(f => !f);
-    if (input === 'G') {
-      setFollowing(true);
-      setScrollOffset(maxOffset);
+    if (input === 'f') {
+      const next = reduceLogNavigation({ following, scrollOffset, maxOffset }, 'toggle-follow');
+      setFollowing(next.following);
+      setScrollOffset(next.scrollOffset);
     }
     if (key.ctrl && input === 'l') clearLogs();
   }, { isActive: !!process.stdin.isTTY });
@@ -107,7 +128,7 @@ export const LogsTab: React.FC = () => {
 
       {/* Footer */}
       <Box marginTop={1}>
-        <Text color="gray">Tab: filter | ↑↓ or j/k: scroll | f: follow | G: end | Ctrl+L: clear</Text>
+        <Text color="gray">h/l: filter | j/k: scroll | g/G: top/bottom | f: follow | Ctrl+L: clear</Text>
       </Box>
     </Box>
   );

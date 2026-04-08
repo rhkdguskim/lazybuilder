@@ -14,7 +14,7 @@ export const GlobalStatusBar: React.FC = () => {
   const warnings = diagnostics.filter(item => item.severity === 'warning').length;
 
   return (
-    <Box paddingX={1} paddingY={1} borderStyle="round" borderColor="gray" justifyContent="space-between">
+    <Box paddingX={1} paddingY={1} borderStyle="round" borderColor="gray" justifyContent="space-between" flexShrink={0}>
       <Box>
         <Text color="gray">Scan </Text>
         <Text color={envScanStatus === 'done' ? 'green' : envScanStatus === 'error' ? 'red' : 'yellow'}>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Text, useApp, useInput } from 'ink';
+import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { TabBar } from './ui/components/TabBar.js';
 import { HelpBar } from './ui/components/HelpBar.js';
 import { GlobalStatusBar } from './ui/components/GlobalStatusBar.js';
@@ -24,6 +24,8 @@ const diagnosticsService = new DiagnosticsService();
 
 const App: React.FC = () => {
   const { exit } = useApp();
+  const { stdout } = useStdout();
+  const terminalHeight = stdout?.rows ?? 30;
   const { activeTab, tabs } = useTabNavigation();
   const { snapshot, status: envStatus } = useEnvironmentScan();
   const { projects, status: projStatus } = useProjectScan();
@@ -34,6 +36,7 @@ const App: React.FC = () => {
   const [updateBannerVisible, setUpdateBannerVisible] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'updating' | 'done' | 'error'>('idle');
   const [showHelp, setShowHelp] = useState(false);
+  const [scanFrame, setScanFrame] = useState(0);
 
   // Background update check — does NOT block the main UI
   useEffect(() => {
@@ -85,7 +88,13 @@ const App: React.FC = () => {
       return;
     }
     if (input === 'q' && !key.ctrl) {
-      exit();
+      // Cancel any running build before exit
+      const cancelFn = useAppStore.getState().buildCancelFn;
+      if (cancelFn) {
+        cancelFn().finally(() => exit());
+      } else {
+        exit();
+      }
     }
   }, { isActive: !!process.stdin.isTTY });
 
@@ -97,6 +106,19 @@ const App: React.FC = () => {
     }
   }, [envStatus, snapshot, projStatus, projects]);
 
+  useEffect(() => {
+    if (envStatus !== 'idle' && envStatus !== 'scanning') {
+      setScanFrame(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setScanFrame(frame => (frame + 1) % 4);
+    }, 180);
+
+    return () => clearInterval(timer);
+  }, [envStatus]);
+
   const helpItems = [
     { key: '1-8', label: 'Tab' },
     { key: '[ ]', label: 'Prev/Next' },
@@ -104,10 +126,40 @@ const App: React.FC = () => {
     { key: 'q', label: 'Quit' },
   ];
 
+  const viewportKey = [
+    activeTab,
+    showHelp ? 'help' : 'content',
+    updateBannerVisible ? updateStatus : 'nobanner',
+  ].join(':');
+
+  const isInitialScanning = envStatus === 'idle' || envStatus === 'scanning';
+  const scanDots = '.'.repeat((scanFrame % 4) + 1).padEnd(4, ' ');
+  const scanBar = ['[=   ]', '[==  ]', '[=== ]', '[ ===]', '[  ==]', '[   =]'][scanFrame % 6];
+
+  if (isInitialScanning) {
+    return (
+      <Box flexDirection="column" width="100%" height={terminalHeight} overflowY="hidden" padding={1}>
+        <Box flexShrink={0} justifyContent="space-between">
+          <Text bold color="cyan">LazyBuild</Text>
+          <Text color="gray">{process.cwd()}</Text>
+        </Box>
+        <Box height={1} />
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
+          <Text bold color="cyan">Scanning Environment{scanDots}</Text>
+          <Box height={1} />
+          <Text color="cyan">{scanBar}</Text>
+          <Box height={1} />
+          <Text color="gray">Build environment and project inventory are being collected.</Text>
+          <Text color="gray">Tabs will appear after the initial scan completes.</Text>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
-    <Box flexDirection="column" width="100%" height="100%">
+    <Box flexDirection="column" width="100%" height={terminalHeight} overflowY="hidden">
       {/* Header */}
-      <Box paddingX={1} justifyContent="space-between">
+      <Box paddingX={1} justifyContent="space-between" flexShrink={0}>
         <Text bold color="cyan">LazyBuild</Text>
         <Text color="gray">{process.cwd()}</Text>
       </Box>
@@ -116,7 +168,7 @@ const App: React.FC = () => {
 
       {/* Update notification banner (non-blocking) */}
       {updateBannerVisible && updateInfo && (
-        <Box paddingX={1} borderStyle="round" borderColor="yellow" marginX={1}>
+        <Box paddingX={1} borderStyle="round" borderColor="yellow" marginX={1} flexShrink={0}>
           {updateStatus === 'idle' && (
             <Text>
               <Text color="yellow" bold> Update available </Text>
@@ -135,11 +187,13 @@ const App: React.FC = () => {
       <TabBar tabs={tabs} activeTab={activeTab} />
 
       {/* Main Content */}
-      <Box flexGrow={1} flexDirection="column">
+      <Box key={viewportKey} flexGrow={1} flexShrink={1} flexDirection="column" overflowY="hidden">
         {showHelp ? (
-          <ShortcutOverlay activeTab={activeTab} />
+          <Box flexGrow={1} flexShrink={1} overflowY="hidden">
+            <ShortcutOverlay activeTab={activeTab} />
+          </Box>
         ) : (
-          <>
+          <Box flexGrow={1} flexShrink={1} overflowY="hidden">
             {activeTab === 'overview' && <OverviewTab />}
             {activeTab === 'environment' && <EnvironmentTab />}
             {activeTab === 'projects' && <ProjectsTab />}
@@ -148,7 +202,7 @@ const App: React.FC = () => {
             {activeTab === 'logs' && <LogsTab />}
             {activeTab === 'history' && <HistoryTab />}
             {activeTab === 'settings' && <SettingsTab />}
-          </>
+          </Box>
         )}
       </Box>
 

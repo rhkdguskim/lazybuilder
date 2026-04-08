@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { ScrollableList } from '../components/ScrollableList.js';
+import { reduceListSelection } from '../navigation/listNavigation.js';
 import type { Severity } from '../../domain/enums.js';
 import { severityColors, symbols } from '../themes/colors.js';
 
@@ -27,13 +28,16 @@ export const DiagnosticsTab: React.FC = () => {
   }, [filtered.length, selectedIdx]);
 
   useInput((input, key) => {
-    if (key.tab) setFilterIdx(i => (i + 1) % FILTERS.length);
-    if (key.upArrow || input === 'k') setSelectedIdx(i => Math.max(0, i - 1));
-    if (key.downArrow || input === 'j') setSelectedIdx(i => Math.min(filtered.length - 1, i + 1));
+    if (key.tab || input === 'l') setFilterIdx(i => (i + 1) % FILTERS.length);
+    if (input === 'h') setFilterIdx(i => (i - 1 + FILTERS.length) % FILTERS.length);
+    if (input === 'g') setSelectedIdx(i => reduceListSelection(i, filtered.length, 'top'));
+    if (input === 'G') setSelectedIdx(i => reduceListSelection(i, filtered.length, 'bottom'));
+    if (key.upArrow || input === 'k') setSelectedIdx(i => reduceListSelection(i, filtered.length, 'up'));
+    if (key.downArrow || input === 'j') setSelectedIdx(i => reduceListSelection(i, filtered.length, 'down'));
   }, { isActive: !!process.stdin.isTTY });
 
   return (
-    <Box flexDirection="column" padding={1}>
+    <Box flexDirection="column" padding={1} flexGrow={1} overflowY="hidden">
       <Box flexDirection="row" marginBottom={1}>
         <Text bold color="cyan">Diagnostics </Text>
         {FILTERS.map((f, i) => (
@@ -43,7 +47,7 @@ export const DiagnosticsTab: React.FC = () => {
             </Text>
           </Box>
         ))}
-        <Text color="gray"> (Tab to switch filter, ↑↓ or j/k to move)</Text>
+        <Text color="gray"> (h/l filter, j/k move, g/G jump)</Text>
       </Box>
 
       {filtered.length === 0 ? (
@@ -52,6 +56,7 @@ export const DiagnosticsTab: React.FC = () => {
         <ScrollableList
           selectedIdx={selectedIdx}
           maxVisible={15}
+          onSelect={setSelectedIdx}
           items={filtered.map((item, i) => {
             const color = severityColors[item.severity] ?? 'gray';
             const symbol = symbols[item.severity] ?? '?';

@@ -23,28 +23,34 @@ export class DevShellRunner extends ProcessRunner {
   }
 
   startWithDevShell(command: string, args: string[], cwd?: string): void {
-    const fullCmd = `${command} ${args.join(' ')}`;
+    // Quote the command if it contains spaces and isn't already quoted
+    const quotedCmd = command.includes(' ') && !command.startsWith('"') ? `"${command}"` : command;
+    const fullCmd = `${quotedCmd} ${args.join(' ')}`;
 
-    let scriptBody: string;
+    let callPart: string;
     if (this.useVsDevCmd) {
-      scriptBody = `chcp 65001 >nul && call "${this.devShellPath}" -arch=${this.arch} -no_logo && ${fullCmd}`;
+      callPart = `call "${this.devShellPath}" -arch=${this.arch} -no_logo`;
     } else {
-      scriptBody = `chcp 65001 >nul && call "${this.devShellPath}" ${this.arch} && ${fullCmd}`;
+      callPart = `call "${this.devShellPath}" ${this.arch}`;
     }
 
-    // Use spawn('cmd', ['/C', script]) — NOT spawn('cmd /C "..."')
-    // shell: false so ProcessRunner doesn't wrap it again
-    this.startRaw('cmd', ['/C', scriptBody], cwd);
+    // Build the full script as a single string for cmd /S /C "..."
+    // /S strips the outer quotes, /C runs the command then exits
+    const script = `chcp 65001 >nul && ${callPart} && ${fullCmd}`;
+    this.startRaw(script, cwd);
   }
 
-  /** Bypass ProcessRunner.start() logic and spawn directly */
-  private startRaw(cmd: string, args: string[], cwd?: string): void {
-    this.child = nodeSpawn(cmd, args, {
+  /** Spawn cmd.exe with /S /C to run a script string */
+  private startRaw(script: string, cwd?: string): void {
+    // cmd /S /C "script" — /S causes cmd to strip the first and last quote
+    // so the inner quotes in paths like "C:\Program Files\..." work correctly
+    this.child = nodeSpawn('cmd.exe', ['/S', '/C', `"${script}"`], {
       cwd,
       env: process.env,
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      windowsVerbatimArguments: true,  // Prevent Node from escaping quotes
     });
 
     if (this.child.stdout) {

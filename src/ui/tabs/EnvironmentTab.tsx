@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { ProgressPanel } from '../components/ProgressPanel.js';
+import { reduceListSelection } from '../navigation/listNavigation.js';
 import type { Severity } from '../../domain/enums.js';
 
 type Category = 'dotnet' | 'msbuild' | 'vs' | 'cpp' | 'winsdk' | 'cmake' | 'packages';
@@ -23,8 +24,10 @@ export const EnvironmentTab: React.FC = () => {
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   useInput((input, key) => {
-    if (key.upArrow || input === 'k') setSelectedIdx(i => Math.max(0, i - 1));
-    if (key.downArrow || input === 'j') setSelectedIdx(i => Math.min(CATEGORIES.length - 1, i + 1));
+    if (input === 'g') setSelectedIdx(i => reduceListSelection(i, CATEGORIES.length, 'top'));
+    if (input === 'G') setSelectedIdx(i => reduceListSelection(i, CATEGORIES.length, 'bottom'));
+    if (key.upArrow || input === 'k') setSelectedIdx(i => reduceListSelection(i, CATEGORIES.length, 'up'));
+    if (key.downArrow || input === 'j') setSelectedIdx(i => reduceListSelection(i, CATEGORIES.length, 'down'));
   }, { isActive: !!process.stdin.isTTY });
 
   if (envStatus !== 'done' || !snapshot) {
@@ -38,11 +41,11 @@ export const EnvironmentTab: React.FC = () => {
   const selectedCategory = CATEGORIES[selectedIdx]!;
 
   return (
-    <Box flexDirection="row" padding={1} flexGrow={1}>
+    <Box flexDirection="row" padding={1} flexGrow={1} overflowY="hidden">
       {/* Left: Category list */}
       <Box flexDirection="column" width={28} borderStyle="single" paddingX={1}>
         <Text bold color="cyan">Categories</Text>
-        <Text color="gray">↑↓ or j/k to move</Text>
+        <Text color="gray">j/k or ↑↓ move, g/G jump</Text>
         {CATEGORIES.map((cat, i) => (
           <Text key={cat.id} inverse={i === selectedIdx} color={i === selectedIdx ? 'blue' : undefined}>
             {i === selectedIdx ? ' ▶ ' : '   '}{cat.label}
@@ -51,7 +54,7 @@ export const EnvironmentTab: React.FC = () => {
       </Box>
 
       {/* Right: Details */}
-      <Box flexDirection="column" flexGrow={1} paddingLeft={2}>
+      <Box flexDirection="column" flexGrow={1} paddingLeft={2} overflowY="hidden">
         <Text bold color="cyan">{'─── '}{selectedCategory.label}{' ───'}</Text>
         <Box height={1} />
         {renderCategoryDetail(snapshot, selectedCategory.id)}

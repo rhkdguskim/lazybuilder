@@ -64,6 +64,22 @@ export class BuildService {
         ? new DotnetOutputParser()
         : new MsBuildOutputParser();
 
+    // Log the full build command
+    onLogEntry({
+      index: this.logIndex++,
+      timestamp: Date.now(),
+      level: 'info',
+      text: `> ${resolved.displayString}`,
+      source: 'stdout',
+    });
+    onLogEntry({
+      index: this.logIndex++,
+      timestamp: Date.now(),
+      level: 'info',
+      text: `  Working directory: ${workingDir}`,
+      source: 'stdout',
+    });
+
     // Determine if Developer Shell is needed
     // C++ projects (vcxproj) always need DevShell for INCLUDE/LIB paths
     const needsDevShell = resolved.requiresDevShell
@@ -86,15 +102,6 @@ export class BuildService {
         const devRunner = new DevShellRunner(devShell.path, archArg, devShell.isVsDevCmd);
         devRunner.startWithDevShell(resolved.command, resolved.args, workingDir);
         runner = devRunner;
-
-        // Log which dev shell is being used
-        onLogEntry({
-          index: this.logIndex++,
-          timestamp: Date.now(),
-          level: 'info',
-          text: `[LazyBuild] Using ${devShell.isVsDevCmd ? 'VsDevCmd.bat' : 'vcvarsall.bat'} from ${bestVs!.displayName} (${archArg})`,
-          source: 'stdout',
-        });
       } else if (snapshot.cpp.vcvarsPath) {
         // Fallback to detected vcvarsall
         const devRunner = new DevShellRunner(snapshot.cpp.vcvarsPath, archArg, false);

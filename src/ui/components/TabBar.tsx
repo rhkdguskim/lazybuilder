@@ -14,7 +14,7 @@ interface TabBarProps {
 
 export const TabBar: React.FC<TabBarProps> = ({ tabs, activeTab }) => {
   return (
-    <Box flexDirection="row" borderStyle="single" borderBottom borderLeft={false} borderRight={false} borderTop={false} paddingX={1}>
+    <Box flexDirection="row" borderStyle="single" borderBottom borderLeft={false} borderRight={false} borderTop={false} paddingX={1} flexShrink={0}>
       {tabs.map((tab, i) => {
         const isActive = tab.id === activeTab;
         return (

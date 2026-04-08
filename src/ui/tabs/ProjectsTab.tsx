@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { ProgressPanel } from '../components/ProgressPanel.js';
 import { ScrollableList } from '../components/ScrollableList.js';
+import { reduceListSelection } from '../navigation/listNavigation.js';
 import type { ProjectInfo, SolutionInfo } from '../../domain/models/ProjectInfo.js';
 
 const typeIcons: Record<string, string> = {
@@ -40,8 +41,10 @@ export const ProjectsTab: React.FC = () => {
   }, [items.length, selectedIdx]);
 
   useInput((input, key) => {
-    if (key.upArrow || input === 'k') setSelectedIdx(i => Math.max(0, i - 1));
-    if (key.downArrow || input === 'j') setSelectedIdx(i => Math.min(items.length - 1, i + 1));
+    if (input === 'g') setSelectedIdx(i => reduceListSelection(i, items.length, 'top'));
+    if (input === 'G') setSelectedIdx(i => reduceListSelection(i, items.length, 'bottom'));
+    if (key.upArrow || input === 'k') setSelectedIdx(i => reduceListSelection(i, items.length, 'up'));
+    if (key.downArrow || input === 'j') setSelectedIdx(i => reduceListSelection(i, items.length, 'down'));
     if (key.return && items[selectedIdx]?.kind === 'project') setActiveTab('build');
   }, { isActive: !!process.stdin.isTTY });
 
@@ -65,15 +68,16 @@ export const ProjectsTab: React.FC = () => {
   const selected = items[selectedIdx];
 
   return (
-    <Box flexDirection="row" padding={1} flexGrow={1}>
+    <Box flexDirection="row" padding={1} flexGrow={1} overflowY="hidden">
       {/* Left: project list */}
       <Box flexDirection="column" width="45%" borderStyle="single" paddingX={1} overflowY="hidden">
         <Text bold color="cyan">Targets ({items.length})</Text>
-        <Text color="gray">↑↓ or j/k to move, Enter opens Build for projects</Text>
+        <Text color="gray">j/k or ↑↓ move, g/G jump, Enter opens Build</Text>
         <Box height={1} />
         <ScrollableList
           selectedIdx={selectedIdx}
           maxVisible={18}
+          onSelect={setSelectedIdx}
           items={items.map((item, i) => {
             const isSelected = i === selectedIdx;
             if (item.kind === 'solution') {
@@ -103,7 +107,7 @@ export const ProjectsTab: React.FC = () => {
       </Box>
 
       {/* Right: detail panel */}
-      <Box flexDirection="column" flexGrow={1} paddingLeft={2}>
+      <Box flexDirection="column" flexGrow={1} paddingLeft={2} overflowY="hidden">
         {selected ? (
           selected.kind === 'solution' ? (
             <SolutionDetail solution={selected.data} />

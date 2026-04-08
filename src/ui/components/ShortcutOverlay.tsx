@@ -20,7 +20,7 @@ export const ShortcutOverlay: React.FC<ShortcutOverlayProps> = ({ activeTab }) =
   const hints = TAB_HINTS[activeTab] ?? TAB_HINTS.overview;
 
   return (
-    <Box flexDirection="column" padding={1} margin={1} borderStyle="round" borderColor="cyan">
+    <Box flexDirection="column" padding={1} margin={1} borderStyle="round" borderColor="cyan" flexGrow={1} flexShrink={1} overflowY="hidden">
       <Text bold color="cyan">Keyboard Help</Text>
       <Box height={1} />
       <Text>Global</Text>
