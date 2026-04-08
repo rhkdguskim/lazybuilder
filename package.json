@@ -4,7 +4,8 @@
   "description": "TUI for .NET/MSBuild/C++ build environment diagnostics and execution",
   "type": "module",
   "bin": {
-    "lazybuild": "./bin/lazybuild.js"
+    "lazybuild": "./bin/lazybuild.js",
+    "buildercli": "./bin/lazybuild.js"
   },
   "scripts": {
     "dev": "tsx src/main.tsx",

@@ -10,49 +10,75 @@ Terminal UI for diagnosing build environments and executing builds without Visua
 - **Build Execution**: dotnet build, msbuild, cmake --build with real-time streaming output
 - **Diagnostics**: Pre-build environment validation with actionable fix suggestions
 - **Log Viewer**: Filtered log output with error/warning parsing and summary
+- **Auto Update**: Checks for updates on startup from GitHub repository
 - **Cross-platform**: Windows primary, Linux/macOS partial support
 
 ## Requirements
 
 - **Node.js** >= 20.0.0
+- **Git** (for auto-update feature)
 - **Terminal** with Unicode support (Windows Terminal recommended)
 
 ## Installation
 
-### From Source
+### Quick Install (Windows)
 
-```bash
-# Clone the repository
+```bat
 git clone https://github.com/rhkdguskim/buildercli.git
 cd buildercli
-
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run dev
-
-# Build for production
-npm run build
-npm start
+install.bat
 ```
 
-### Global Install (after build)
+### Quick Install (Linux / macOS)
 
 ```bash
+git clone https://github.com/rhkdguskim/buildercli.git
+cd buildercli
+./install.sh
+```
+
+### Manual Install
+
+```bash
+git clone https://github.com/rhkdguskim/buildercli.git
+cd buildercli
+npm install
+npm run build
 npm link
+```
+
+### Run After Install
+
+```bash
+# Global command (available anywhere after install)
+buildercli
+
+# Or use the alias
 lazybuild
+```
+
+### Run Without Install (Development)
+
+```bash
+git clone https://github.com/rhkdguskim/buildercli.git
+cd buildercli
+npm install
+npm run dev
 ```
 
 ## Usage
 
-```bash
-# Run in current directory
-npm run dev
+Launch the TUI:
 
-# Or after global install
-lazybuild
+```bash
+buildercli
 ```
+
+On startup, the tool will:
+1. Check for updates from GitHub (prompts to update if available)
+2. Scan your build environment (.NET, MSBuild, C++, CMake, etc.)
+3. Scan the current directory for projects and solutions
+4. Run diagnostics to detect missing tools or configuration issues
 
 ### Keyboard Shortcuts
 
@@ -70,14 +96,22 @@ lazybuild
 
 ### Tabs
 
-1. **Overview** - Build environment status at a glance
-2. **Environment** - Detailed tool/SDK information by category
-3. **Projects** - Scanned solutions and projects with metadata
-4. **Build** - Configuration manager, command preview, build execution
-5. **Diagnostics** - Environment issues with severity and fix suggestions
-6. **Logs** - Real-time build log with filtering
-7. **History** - Past build results
-8. **Settings** - Application configuration
+| # | Tab | Description |
+|---|-----|-------------|
+| 1 | **Overview** | Build environment status at a glance |
+| 2 | **Environment** | Detailed tool/SDK info by category (.NET, MSBuild, VS, C++, Windows SDK, CMake, Packages) |
+| 3 | **Projects** | Scanned solutions and projects with metadata, TFM, recommended build command |
+| 4 | **Build** | Configuration manager with Configuration/Platform selection, command preview, execute |
+| 5 | **Diagnostics** | Environment issues with severity filtering and fix suggestions |
+| 6 | **Logs** | Real-time build log with error/warning filtering |
+| 7 | **History** | Past build results |
+| 8 | **Settings** | Application configuration |
+
+## Uninstall
+
+```bash
+npm unlink -g lazybuild
+```
 
 ## Tech Stack
 
