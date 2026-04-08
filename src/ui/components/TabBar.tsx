@@ -14,15 +14,17 @@ interface TabBarProps {
 
 export const TabBar: React.FC<TabBarProps> = ({ tabs, activeTab }) => {
   return (
-    <Box flexDirection="row" borderStyle="single" borderBottom borderLeft={false} borderRight={false} borderTop={false}>
+    <Box flexDirection="row" borderStyle="single" borderBottom borderLeft={false} borderRight={false} borderTop={false} paddingX={1}>
       {tabs.map((tab, i) => {
         const isActive = tab.id === activeTab;
         return (
-          <Box key={tab.id} paddingX={1}>
-            <Text bold={isActive} color={isActive ? 'blue' : 'gray'} inverse={isActive}>
-              {' '}{tab.shortcut} {tab.label}{' '}
+          <Box key={tab.id} marginRight={1}>
+            <Text bold={isActive} color={isActive ? 'cyan' : 'gray'} inverse={isActive}>
+              {' '}{tab.shortcut}{' '}
             </Text>
-            {i < tabs.length - 1 && <Text color="gray"> </Text>}
+            <Text bold={isActive} color={isActive ? 'white' : 'gray'}>
+              {' '}{tab.label}{' '}
+            </Text>
           </Box>
         );
       })}

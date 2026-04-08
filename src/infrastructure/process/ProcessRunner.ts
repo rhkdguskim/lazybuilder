@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { createInterface } from 'node:readline';
 import { EventEmitter } from 'node:events';
 import treeKill from 'tree-kill';
 
@@ -9,6 +8,8 @@ export interface ProcessRunnerOptions {
   cwd?: string;
   env?: Record<string, string>;
   shell?: boolean;
+  /** Force UTF-8 output on Windows by prepending chcp 65001 */
+  forceUtf8?: boolean;
 }
 
 export interface CommandOutput {
@@ -21,39 +22,47 @@ export class ProcessRunner extends EventEmitter {
   private child: ChildProcess | null = null;
 
   start(options: ProcessRunnerOptions): void {
-    const { command, args = [], cwd, env, shell = true } = options;
+    const { command, args = [], cwd, env, shell = true, forceUtf8 = true } = options;
 
     const mergedEnv = env ? { ...process.env, ...env } : process.env;
 
-    // When shell=true, combine command and args into a single string to avoid
-    // Node.js DEP0190 deprecation warning about unescaped args with shell option
-    if (shell && args.length > 0) {
-      const fullCommand = `${command} ${args.join(' ')}`;
-      this.child = spawn(fullCommand, [], {
-        cwd,
-        env: mergedEnv,
-        shell: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
+    // On Windows, force UTF-8 codepage to avoid Korean (CP949) garbling
+    const isWindows = process.platform === 'win32';
+    let finalCommand: string;
+    let finalArgs: string[];
+    let finalShell: boolean | string;
+
+    if (shell && isWindows && forceUtf8) {
+      // Wrap command with chcp 65001 to force UTF-8 output
+      const cmdPart = args.length > 0 ? `${command} ${args.join(' ')}` : command;
+      finalCommand = `chcp 65001 >nul && ${cmdPart}`;
+      finalArgs = [];
+      finalShell = true;
+    } else if (shell && args.length > 0) {
+      finalCommand = `${command} ${args.join(' ')}`;
+      finalArgs = [];
+      finalShell = true;
     } else {
-      this.child = spawn(command, args, {
-        cwd,
-        env: mergedEnv,
-        shell,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
+      finalCommand = command;
+      finalArgs = args;
+      finalShell = shell;
     }
 
+    this.child = spawn(finalCommand, finalArgs, {
+      cwd,
+      env: mergedEnv,
+      shell: finalShell,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    // Use manual line splitting with UTF-8 decoding
     if (this.child.stdout) {
-      const rl = createInterface({ input: this.child.stdout });
-      rl.on('line', (line) => this.emit('stdout', line));
+      this.readLines(this.child.stdout, 'stdout');
     }
 
     if (this.child.stderr) {
-      const rl = createInterface({ input: this.child.stderr });
-      rl.on('line', (line) => this.emit('stderr', line));
+      this.readLines(this.child.stderr, 'stderr');
     }
 
     this.child.on('error', (err) => this.emit('error', err));
@@ -69,6 +78,25 @@ export class ProcessRunner extends EventEmitter {
         }
         resolve();
       });
+    });
+  }
+
+  private readLines(stream: NodeJS.ReadableStream, event: 'stdout' | 'stderr'): void {
+    let buffer = '';
+    stream.setEncoding('utf-8');
+    stream.on('data', (chunk: string) => {
+      buffer += chunk;
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        this.emit(event, line);
+      }
+    });
+    stream.on('end', () => {
+      if (buffer.length > 0) {
+        this.emit(event, buffer);
+        buffer = '';
+      }
     });
   }
 }

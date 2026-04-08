@@ -8,7 +8,7 @@ import { MsBuildAdapter } from '../infrastructure/adapters/MsBuildAdapter.js';
 import { CppMsBuildAdapter } from '../infrastructure/adapters/CppMsBuildAdapter.js';
 import { CMakeAdapter } from '../infrastructure/adapters/CMakeAdapter.js';
 import { ProcessRunner } from '../infrastructure/process/ProcessRunner.js';
-import { DevShellRunner } from '../infrastructure/process/DevShellRunner.js';
+import { DevShellRunner, findDevShellPath, findBestInstallation } from '../infrastructure/process/DevShellRunner.js';
 import { MsBuildOutputParser } from '../infrastructure/parsers/MsBuildOutputParser.js';
 import { DotnetOutputParser } from '../infrastructure/parsers/DotnetOutputParser.js';
 import { CMakeOutputParser } from '../infrastructure/parsers/CMakeOutputParser.js';
@@ -53,6 +53,10 @@ export class BuildService {
     const startTime = new Date();
     this.logIndex = 0;
 
+    // Use the directory of the target file as working directory
+    const { dirname } = await import('node:path');
+    const workingDir = dirname(profile.targetPath);
+
     // Select parser
     const parser = project.buildSystem === 'cmake'
       ? new CMakeOutputParser()
@@ -60,18 +64,53 @@ export class BuildService {
         ? new DotnetOutputParser()
         : new MsBuildOutputParser();
 
+    // Determine if Developer Shell is needed
+    // C++ projects (vcxproj) always need DevShell for INCLUDE/LIB paths
+    const needsDevShell = resolved.requiresDevShell
+      || project.projectType === 'cpp-msbuild'
+      || project.buildSystem === 'msbuild';
+
     // Create runner
     let runner: ProcessRunner;
-    if (resolved.requiresDevShell && snapshot.cpp.vcvarsPath) {
-      const devRunner = new DevShellRunner(snapshot.cpp.vcvarsPath, profile.platform === 'x86' ? 'x86' : 'x64');
-      devRunner.startWithDevShell(resolved.command, resolved.args, process.cwd());
-      runner = devRunner;
+    if (needsDevShell && snapshot.visualStudio.installations.length > 0) {
+      // Find the best VS installation for this project's toolset
+      const bestVs = findBestInstallation(
+        snapshot.visualStudio.installations,
+        project.platformToolset,
+      );
+
+      const devShell = bestVs ? findDevShellPath(bestVs) : null;
+      const archArg = profile.platform === 'x86' || profile.platform === 'Win32' ? 'x86' : 'x64';
+
+      if (devShell) {
+        const devRunner = new DevShellRunner(devShell.path, archArg, devShell.isVsDevCmd);
+        devRunner.startWithDevShell(resolved.command, resolved.args, workingDir);
+        runner = devRunner;
+
+        // Log which dev shell is being used
+        onLogEntry({
+          index: this.logIndex++,
+          timestamp: Date.now(),
+          level: 'info',
+          text: `[LazyBuild] Using ${devShell.isVsDevCmd ? 'VsDevCmd.bat' : 'vcvarsall.bat'} from ${bestVs!.displayName} (${archArg})`,
+          source: 'stdout',
+        });
+      } else if (snapshot.cpp.vcvarsPath) {
+        // Fallback to detected vcvarsall
+        const devRunner = new DevShellRunner(snapshot.cpp.vcvarsPath, archArg, false);
+        devRunner.startWithDevShell(resolved.command, resolved.args, workingDir);
+        runner = devRunner;
+      } else {
+        // No dev shell available, try anyway
+        runner = new ProcessRunner();
+        runner.start({ command: resolved.command, args: resolved.args, cwd: workingDir });
+      }
     } else {
       runner = new ProcessRunner();
       runner.start({
         command: resolved.command,
         args: resolved.args,
-        cwd: process.cwd(),
+        cwd: workingDir,
       });
     }
 

@@ -22,8 +22,8 @@ export function useTabNavigation() {
   const isInteractive = !!process.stdin.isTTY;
 
   useInput((input, key) => {
-    // Ctrl+1 through Ctrl+8
-    if (key.ctrl && input >= '1' && input <= '8') {
+    // Direct 1 through 8, or Ctrl+1 through Ctrl+8
+    if (input >= '1' && input <= '8') {
       const idx = parseInt(input) - 1;
       if (idx < TAB_IDS.length) {
         setActiveTab(TAB_IDS[idx]!);
@@ -32,13 +32,13 @@ export function useTabNavigation() {
     }
 
     // Left/Right arrow for tab cycling
-    if (key.leftArrow && key.ctrl) {
+    if ((key.leftArrow && key.ctrl) || input === '[') {
       const idx = TAB_IDS.indexOf(activeTab);
       const prev = (idx - 1 + TAB_IDS.length) % TAB_IDS.length;
       setActiveTab(TAB_IDS[prev]!);
       return;
     }
-    if (key.rightArrow && key.ctrl) {
+    if ((key.rightArrow && key.ctrl) || input === ']') {
       const idx = TAB_IDS.indexOf(activeTab);
       const next = (idx + 1) % TAB_IDS.length;
       setActiveTab(TAB_IDS[next]!);

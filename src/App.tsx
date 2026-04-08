@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import { TabBar } from './ui/components/TabBar.js';
 import { HelpBar } from './ui/components/HelpBar.js';
+import { GlobalStatusBar } from './ui/components/GlobalStatusBar.js';
+import { ShortcutOverlay } from './ui/components/ShortcutOverlay.js';
 import { useTabNavigation } from './ui/hooks/useTabNavigation.js';
 import { useEnvironmentScan } from './ui/hooks/useEnvironmentScan.js';
 import { useProjectScan } from './ui/hooks/useProjectScan.js';
@@ -33,6 +35,7 @@ const App: React.FC = () => {
   const [updateState, setUpdateState] = useState<UpdateState>('checking');
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
   const [updateMessage, setUpdateMessage] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
 
   // Check for updates on startup
   useEffect(() => {
@@ -82,6 +85,10 @@ const App: React.FC = () => {
 
     // Normal global keybindings (only when not in update prompt)
     if (updateState === 'skipped') {
+      if (input === '?') {
+        setShowHelp(v => !v);
+        return;
+      }
       if (input === 'q' && !key.ctrl) {
         exit();
       }
@@ -138,9 +145,9 @@ const App: React.FC = () => {
 
   // Normal app UI
   const helpItems = [
-    { key: 'Ctrl+1-8', label: 'Tab' },
-    { key: 'Ctrl+←→', label: 'Prev/Next' },
-    { key: '↑↓', label: 'Navigate' },
+    { key: '1-8', label: 'Tab' },
+    { key: '[ ]', label: 'Prev/Next' },
+    { key: '?', label: 'Keys' },
     { key: 'q', label: 'Quit' },
   ];
 
@@ -152,19 +159,27 @@ const App: React.FC = () => {
         <Text color="gray">{process.cwd()}</Text>
       </Box>
 
+      <GlobalStatusBar />
+
       {/* Tab Bar */}
       <TabBar tabs={tabs} activeTab={activeTab} />
 
       {/* Main Content */}
       <Box flexGrow={1} flexDirection="column">
-        {activeTab === 'overview' && <OverviewTab />}
-        {activeTab === 'environment' && <EnvironmentTab />}
-        {activeTab === 'projects' && <ProjectsTab />}
-        {activeTab === 'build' && <BuildTab />}
-        {activeTab === 'diagnostics' && <DiagnosticsTab />}
-        {activeTab === 'logs' && <LogsTab />}
-        {activeTab === 'history' && <HistoryTab />}
-        {activeTab === 'settings' && <SettingsTab />}
+        {showHelp ? (
+          <ShortcutOverlay activeTab={activeTab} />
+        ) : (
+          <>
+            {activeTab === 'overview' && <OverviewTab />}
+            {activeTab === 'environment' && <EnvironmentTab />}
+            {activeTab === 'projects' && <ProjectsTab />}
+            {activeTab === 'build' && <BuildTab />}
+            {activeTab === 'diagnostics' && <DiagnosticsTab />}
+            {activeTab === 'logs' && <LogsTab />}
+            {activeTab === 'history' && <HistoryTab />}
+            {activeTab === 'settings' && <SettingsTab />}
+          </>
+        )}
       </Box>
 
       {/* Help Bar */}
