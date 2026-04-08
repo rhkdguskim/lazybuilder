@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { ScrollableList } from '../components/ScrollableList.js';
+import { PageHeader, Panel } from '../components/index.js';
 import { reduceListSelection } from '../navigation/listNavigation.js';
 import type { Severity } from '../../domain/enums.js';
 import { severityColors, symbols } from '../themes/colors.js';
@@ -39,8 +40,12 @@ export const DiagnosticsTab: React.FC = () => {
 
   return (
     <Box flexDirection="column" padding={1} flexGrow={1} overflowY="hidden">
-      <Box flexDirection="row" marginBottom={1}>
-        <Text bold color="cyan">Diagnostics </Text>
+      <PageHeader
+        title="Diagnostics"
+        subtitle="Review detected issues and recommended actions."
+        rightHint="h/l filter | j/k move | g/G jump"
+      />
+      <Box flexDirection="row" marginBottom={1} flexShrink={0}>
         {FILTERS.map((f, i) => (
           <Box key={f.label} marginRight={1}>
             <Text inverse={i === filterIdx} color={i === filterIdx ? 'blue' : 'gray'}>
@@ -48,41 +53,38 @@ export const DiagnosticsTab: React.FC = () => {
             </Text>
           </Box>
         ))}
-        <Text color="gray"> (h/l filter, j/k move, g/G jump)</Text>
       </Box>
 
-      {filtered.length === 0 ? (
-        <Text color="green">No issues found.</Text>
-      ) : (
+      <Panel title="Results" subtitle={`${filtered.length} item(s)`}>
         <ScrollableList
           selectedIdx={selectedIdx}
           maxVisible={15}
           onSelect={setSelectedIdx}
-          items={filtered.map((item, i) => {
-            const color = severityColors[item.severity] ?? 'gray';
-            const symbol = symbols[item.severity] ?? '?';
-            const isSelected = i === selectedIdx;
-            return (
-              <Box key={item.id} flexDirection="column" marginBottom={isSelected ? 1 : 0}>
-                <Text inverse={isSelected}>
-                  <Text color={color}> {symbol} </Text>
-                  <Text bold>{item.code}</Text>
-                  <Text> {item.title}</Text>
-                </Text>
-                {isSelected && (
-                  <Box flexDirection="column" paddingLeft={4}>
-                    <Text color="gray">{item.description}</Text>
-                    <Text color="cyan">→ {item.suggestedAction}</Text>
-                    {item.relatedPaths.length > 0 && (
-                      <Text color="gray">  Files: {item.relatedPaths.join(', ')}</Text>
+          items={filtered.length === 0
+            ? [<Text key="empty" color="green">No issues found.</Text>]
+            : filtered.map((item, i) => {
+                const color = severityColors[item.severity] ?? 'gray';
+                const symbol = symbols[item.severity] ?? '?';
+                const isSelected = i === selectedIdx;
+                return (
+                  <Box key={item.id} flexDirection="column">
+                    <Text inverse={isSelected}>
+                      <Text color={color}> {symbol} </Text>
+                      <Text bold>{item.code}</Text>
+                      <Text> {item.title}</Text>
+                    </Text>
+                    {isSelected && (
+                      <Box flexDirection="column" paddingLeft={4}>
+                        <Text color="gray" wrap="truncate">{item.description}</Text>
+                        <Text color="cyan" wrap="truncate">→ {item.suggestedAction}</Text>
+                      </Box>
                     )}
                   </Box>
-                )}
-              </Box>
-            );
-          })}
+                );
+              })
+          }
         />
-      )}
+      </Panel>
     </Box>
   );
 };

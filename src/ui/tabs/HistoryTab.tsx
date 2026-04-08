@@ -1,6 +1,8 @@
-import React from 'react';
-import { Box, Text } from 'ink';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
+import { ScrollableList } from '../components/ScrollableList.js';
+import { reduceListSelection } from '../navigation/listNavigation.js';
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -17,43 +19,93 @@ function formatTime(date: Date): string {
 }
 
 export const HistoryTab: React.FC = () => {
+  const isActiveTab = useAppStore(s => s.activeTab) === 'history';
   const history = useAppStore(s => s.buildHistory);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  const ordered = useMemo(() => [...history].reverse(), [history]);
+
+  useEffect(() => {
+    if (selectedIdx >= ordered.length) {
+      setSelectedIdx(Math.max(0, ordered.length - 1));
+    }
+  }, [ordered.length, selectedIdx]);
+
+  useInput((input, key) => {
+    if (input === 'g') setSelectedIdx(i => reduceListSelection(i, ordered.length, 'top'));
+    if (input === 'G') setSelectedIdx(i => reduceListSelection(i, ordered.length, 'bottom'));
+    if (key.upArrow || input === 'k') setSelectedIdx(i => reduceListSelection(i, ordered.length, 'up'));
+    if (key.downArrow || input === 'j') setSelectedIdx(i => reduceListSelection(i, ordered.length, 'down'));
+  }, { isActive: !!process.stdin.isTTY && isActiveTab });
+
+  const selected = ordered[selectedIdx];
 
   return (
-    <Box flexDirection="column" padding={1} flexGrow={1} overflowY="hidden">
-      <Text bold color="cyan">{'─── Build History ───'}</Text>
-      <Box height={1} />
+    <Box flexDirection="row" padding={1} flexGrow={1} overflowY="hidden">
+      <Box flexDirection="column" width="48%" paddingRight={2} overflowY="hidden">
+        <Text bold color="cyan">{'─── Build History ───'}</Text>
+        <Text color="gray">j/k or ↑↓ move, g/G jump</Text>
+        <Box height={1} />
 
-      {history.length === 0 ? (
-        <Text color="gray">No build history yet. Run a build to see results here.</Text>
-      ) : (
-        <>
-          {/* Header */}
-          <Box flexDirection="row">
-            <Box width={6}><Text bold color="gray"> #</Text></Box>
-            <Box width={10}><Text bold color="gray">Time</Text></Box>
-            <Box width={12}><Text bold color="gray">Duration</Text></Box>
-            <Box width={10}><Text bold color="gray">Status</Text></Box>
-            <Box width={8}><Text bold color="gray">Errors</Text></Box>
-            <Box width={8}><Text bold color="gray">Warns</Text></Box>
-          </Box>
+        {ordered.length === 0 ? (
+          <Text color="gray">No build history yet. Run a build to see results here.</Text>
+        ) : (
+          <ScrollableList
+            selectedIdx={selectedIdx}
+            maxVisible={18}
+            onSelect={setSelectedIdx}
+            items={ordered.map((r, i) => {
+              const statusColor = r.status === 'success' ? 'green' : r.status === 'failure' ? 'red' : 'yellow';
+              return (
+                <Box key={i} flexDirection="row">
+                  <Text inverse={i === selectedIdx} color={statusColor as any}>
+                    {i === selectedIdx ? '▶ ' : '  '}{formatTime(r.startTime)} {r.status.toUpperCase()}
+                  </Text>
+                  <Text color="gray"> {formatDuration(r.durationMs)} {r.errorCount}E/{r.warningCount}W</Text>
+                </Box>
+              );
+            })}
+          />
+        )}
+      </Box>
 
-          {/* Rows (newest first) */}
-          {[...history].reverse().map((r, i) => {
-            const statusColor = r.status === 'success' ? 'green' : r.status === 'failure' ? 'red' : 'yellow';
-            return (
-              <Box key={i} flexDirection="row">
-                <Box width={6}><Text color="gray"> {history.length - i}</Text></Box>
-                <Box width={10}><Text>{formatTime(r.startTime)}</Text></Box>
-                <Box width={12}><Text bold>{formatDuration(r.durationMs)}</Text></Box>
-                <Box width={10}><Text color={statusColor}>{r.status}</Text></Box>
-                <Box width={8}><Text color={r.errorCount > 0 ? 'red' : undefined}>{r.errorCount}</Text></Box>
-                <Box width={8}><Text color={r.warningCount > 0 ? 'yellow' : undefined}>{r.warningCount}</Text></Box>
-              </Box>
-            );
-          })}
-        </>
-      )}
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+        <Text bold color="cyan">{'─── Selected Run ───'}</Text>
+        <Box height={1} />
+
+        <DetailRow label="Started" value={selected ? selected.startTime.toISOString() : '-'} />
+        <DetailRow label="Status" value={selected?.status ?? '-'} color={selected?.status === 'success' ? 'green' : selected?.status === 'failure' ? 'red' : 'gray'} />
+        <DetailRow label="Duration" value={selected ? formatDuration(selected.durationMs) : '-'} />
+        <DetailRow label="Exit Code" value={selected ? (selected.exitCode === null ? 'N/A' : String(selected.exitCode)) : '-'} />
+        <DetailRow label="Errors" value={selected ? String(selected.errorCount) : '-'} color={selected && selected.errorCount > 0 ? 'red' : 'gray'} />
+        <DetailRow label="Warnings" value={selected ? String(selected.warningCount) : '-'} color={selected && selected.warningCount > 0 ? 'yellow' : 'gray'} />
+        <Box height={1} />
+        <Text bold>Diagnostics</Text>
+        <ScrollableList
+          selectedIdx={0}
+          maxVisible={8}
+          items={selected && (selected.errors.length > 0 || selected.warnings.length > 0)
+            ? [
+                ...selected.errors.slice(0, 10).map((item, i) => (
+                  <Text key={`e-${i}`} color="red" wrap="truncate">{item.code}: {item.message}</Text>
+                )),
+                ...selected.warnings.slice(0, 10).map((item, i) => (
+                  <Text key={`w-${i}`} color="yellow" wrap="truncate">{item.code}: {item.message}</Text>
+                )),
+              ]
+            : [<Text key="none" color="gray">No diagnostics</Text>]
+          }
+        />
+      </Box>
     </Box>
   );
 };
+
+const DetailRow: React.FC<{ label: string; value: string; color?: string }> = ({ label, value, color }) => (
+  <Box flexDirection="row">
+    <Box width={12}>
+      <Text color="gray">{label}</Text>
+    </Box>
+    <Text color={color as any}>{value}</Text>
+  </Box>
+);

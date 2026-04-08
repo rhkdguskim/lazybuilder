@@ -16,15 +16,15 @@ export class MsBuildAdapter implements BuildAdapter {
     const msbuild = this.msbuildPath ?? 'msbuild';
     const args: string[] = [];
 
-    // Target file
+    // Target file — quote only the path
     args.push(`"${profile.targetPath}"`);
 
-    // Configuration
+    // Configuration — no quotes around value
     args.push(`/p:Configuration=${profile.configuration}`);
 
-    // Platform
+    // Platform — no quotes around value (MSBuild doesn't want them)
     if (profile.platform) {
-      args.push(`/p:Platform="${profile.platform}"`);
+      args.push(`/p:Platform=${profile.platform}`);
     }
 
     // Verbosity mapping

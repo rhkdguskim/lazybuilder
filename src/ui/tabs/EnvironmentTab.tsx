@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { ProgressPanel } from '../components/ProgressPanel.js';
+import { PageHeader, Panel } from '../components/index.js';
 import { reduceListSelection } from '../navigation/listNavigation.js';
 import type { Severity } from '../../domain/enums.js';
 
@@ -44,21 +45,25 @@ export const EnvironmentTab: React.FC = () => {
   return (
     <Box flexDirection="row" padding={1} flexGrow={1} overflowY="hidden">
       {/* Left: Category list */}
-      <Box flexDirection="column" width={28} borderStyle="single" paddingX={1}>
-        <Text bold color="cyan">Categories</Text>
-        <Text color="gray">j/k or ↑↓ move, g/G jump</Text>
-        {CATEGORIES.map((cat, i) => (
-          <Text key={cat.id} inverse={i === selectedIdx} color={i === selectedIdx ? 'blue' : undefined}>
-            {i === selectedIdx ? ' ▶ ' : '   '}{cat.label}
-          </Text>
-        ))}
+      <Box flexDirection="column" width={28} paddingRight={2} overflowY="hidden">
+        <PageHeader title="Environment" subtitle="Installed tools, SDKs, and build prerequisites." rightHint="j/k move | g/G jump" />
+        <Panel title="Categories">
+          <>
+            {CATEGORIES.map((cat, i) => (
+              <Text key={cat.id} inverse={i === selectedIdx} color={i === selectedIdx ? 'blue' : undefined}>
+                {i === selectedIdx ? ' ▶ ' : '   '}{cat.label}
+              </Text>
+            ))}
+          </>
+        </Panel>
       </Box>
 
       {/* Right: Details */}
-      <Box flexDirection="column" flexGrow={1} paddingLeft={2} overflowY="hidden">
-        <Text bold color="cyan">{'─── '}{selectedCategory.label}{' ───'}</Text>
-        <Box height={1} />
-        {renderCategoryDetail(snapshot, selectedCategory.id)}
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+        <PageHeader title={selectedCategory.label} subtitle="Selected environment category details." />
+        <Panel title="Details">
+          {renderCategoryDetail(snapshot, selectedCategory.id)}
+        </Panel>
       </Box>
     </Box>
   );

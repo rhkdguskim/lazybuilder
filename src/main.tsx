@@ -1,34 +1,85 @@
 import React from 'react';
 import { render } from 'ink';
+import { Writable } from 'node:stream';
 import App from './App.js';
 
-// Cleanup function to restore terminal state
+// ── Terminal setup ──────────────────────────────────────────────
+const realStdout = process.stdout;
+
 function cleanup() {
-  process.stdout.write('\x1b[?25h');   // Show cursor
-  process.stdout.write('\x1b[?1006l'); // Disable SGR mouse
-  process.stdout.write('\x1b[?1000l'); // Disable mouse click tracking
-  process.stdout.write('\x1b[?1049l'); // Leave alternate screen
+  realStdout.write('\x1b[?25h');   // Show cursor
+  realStdout.write('\x1b[?1006l'); // Disable SGR mouse
+  realStdout.write('\x1b[?1000l'); // Disable mouse click
+  realStdout.write('\x1b[?1049l'); // Leave alternate screen
 }
 
-// Enter alternate screen buffer — fixed canvas like vim/htop
-process.stdout.write('\x1b[?1049h');  // Alternate screen
-process.stdout.write('\x1b[?25l');    // Hide cursor
-process.stdout.write('\x1b[H');       // Cursor to top-left
-process.stdout.write('\x1b[?1000h');  // Enable mouse click tracking
-process.stdout.write('\x1b[?1006h');  // Enable SGR mouse mode
-// NOTE: Do NOT enable \x1b[?1003h (mouse move tracking) — it floods stdin
+realStdout.write('\x1b[?1049h');  // Alternate screen
+realStdout.write('\x1b[?25l');    // Hide cursor
+realStdout.write('\x1b[2J');      // Clear entire screen
+realStdout.write('\x1b[H');       // Cursor home
+realStdout.write('\x1b[?1000h');  // Mouse click tracking
+realStdout.write('\x1b[?1006h');  // SGR mouse mode
 
-// Ensure cleanup on any exit
 process.on('exit', cleanup);
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
-process.on('uncaughtException', (err) => {
-  cleanup();
-  console.error(err);
-  process.exit(1);
+process.on('uncaughtException', (err) => { cleanup(); console.error(err); process.exit(1); });
+
+// ── Flicker-free rendering ─────────────────────────────────────
+//
+// Ink erases previous output line-by-line (\x1b[2K\x1b[1A) then rewrites.
+// We intercept, strip erase sequences, and repaint from cursor home.
+// Each line gets \x1b[K (erase to end of line) to clear residual chars.
+// \x1b[0J at the end clears any leftover lines from previous frame.
+
+const stableStream = new Writable({
+  write(chunk: Buffer, _encoding: string, callback: () => void) {
+    const raw = chunk.toString();
+
+    // Strip Ink's erase/cursor sequences
+    let content = raw
+      .replace(/\x1b\[2K/g, '')       // erase line
+      .replace(/\x1b\[1A/g, '')       // cursor up
+      .replace(/\x1b\[\d*G/g, '');    // cursor horizontal absolute
+
+    // Remove leading empty lines
+    content = content.replace(/^\n+/, '');
+
+    if (!content.trim()) {
+      callback();
+      return;
+    }
+
+    // Append \x1b[K to each line (erase from cursor to end of line)
+    // This handles Unicode/wide chars without needing to calculate display width
+    const lines = content.split('\n');
+    const cleanedLines = lines.map(line => line + '\x1b[K');
+
+    // Atomic frame: home → content with per-line erase → clear remaining screen
+    realStdout.write(
+      '\x1b[H' +                    // Cursor to (0,0)
+      cleanedLines.join('\n') +     // Content (each line clears its own tail)
+      '\x1b[0J'                     // Clear from cursor to end of screen
+    );
+
+    callback();
+  },
 });
 
+// Expose terminal properties (Ink reads these for layout)
+Object.defineProperty(stableStream, 'columns', { get: () => realStdout.columns });
+Object.defineProperty(stableStream, 'rows', { get: () => realStdout.rows });
+Object.defineProperty(stableStream, 'isTTY', { get: () => true });
+realStdout.on('resize', () => {
+  // Clear screen on resize to prevent ghost artifacts
+  realStdout.write('\x1b[2J');
+  realStdout.write('\x1b[H');
+  stableStream.emit('resize');
+});
+
+// ── Render ──────────────────────────────────────────────────────
 const { waitUntilExit } = render(<App />, {
+  stdout: stableStream as any,
   patchConsole: false,
   exitOnCtrlC: true,
 });

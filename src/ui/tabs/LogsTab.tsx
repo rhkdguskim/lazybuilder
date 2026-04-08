@@ -103,18 +103,14 @@ export const LogsTab: React.FC = () => {
             {following ? '⬇ Follow' : '⏸ Paused'}
           </Text>
           <Text color="gray"> | {filtered.length}/{logEntries.length} lines</Text>
-          {errorCount > 0 && <Text color="red"> | {errorCount}E</Text>}
-          {warnCount > 0 && <Text color="yellow"> {warnCount}W</Text>}
+          <Text color={errorCount > 0 ? 'red' : 'gray'}> {errorCount}E</Text>
+          <Text color={warnCount > 0 ? 'yellow' : 'gray'}> {warnCount}W</Text>
         </Box>
       </Box>
 
-      {/* Log view */}
+      {/* Log view — always renders same structure */}
       <Box flexDirection="column" flexGrow={1} marginTop={1} borderStyle="single" paddingX={1} overflowY="hidden">
-        {logEntries.length === 0 ? (
-          <Text color="gray">No build logs. Run a build to see output here.</Text>
-        ) : filtered.length === 0 ? (
-          <Text color="gray">No entries match the current filter.</Text>
-        ) : (
+        {visible.length > 0 ? (
           visible.map((entry) => (
             <Text key={entry.index} color={
               entry.level === 'error' ? 'red' :
@@ -124,6 +120,10 @@ export const LogsTab: React.FC = () => {
               {entry.text}
             </Text>
           ))
+        ) : (
+          <Text color="gray">
+            {logEntries.length === 0 ? 'No build logs yet.' : 'No entries match filter.'}
+          </Text>
         )}
       </Box>
 

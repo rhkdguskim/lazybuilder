@@ -14,6 +14,10 @@ interface AppState {
   activeTab: TabId;
   setActiveTab: (tab: TabId) => void;
 
+  // Boot
+  bootCompleted: boolean;
+  setBootCompleted: () => void;
+
   // Environment scan
   snapshot: EnvironmentSnapshot | null;
   envScanStatus: ScanStatus;
@@ -71,6 +75,10 @@ export const useAppStore = create<AppState>((set) => ({
   // Tab
   activeTab: 'overview',
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  // Boot
+  bootCompleted: false,
+  setBootCompleted: () => set({ bootCompleted: true }),
 
   // Environment
   snapshot: null,

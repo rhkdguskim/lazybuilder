@@ -13,7 +13,7 @@ export const ProgressPanel: React.FC<ProgressPanelProps> = ({ label, status }) =
 
   React.useEffect(() => {
     if (status !== 'scanning') return;
-    const timer = setInterval(() => setFrame(f => (f + 1) % spinnerFrames.length), 80);
+    const timer = setInterval(() => setFrame(f => (f + 1) % spinnerFrames.length), 200);
     return () => clearInterval(timer);
   }, [status]);
 

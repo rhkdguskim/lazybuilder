@@ -16,13 +16,13 @@ export class CppMsBuildAdapter implements BuildAdapter {
     const msbuild = this.msbuildPath ?? 'msbuild';
     const args: string[] = [];
 
-    // Target file
+    // Target file — quote only the path
     args.push(`"${profile.targetPath}"`);
 
-    // Configuration
+    // Configuration — no quotes
     args.push(`/p:Configuration=${profile.configuration}`);
 
-    // Platform (C++ uses Win32 instead of x86)
+    // Platform (C++ uses Win32 instead of x86) — no quotes
     const platform = profile.platform === 'x86' ? 'Win32' : profile.platform;
     args.push(`/p:Platform=${platform}`);
 
@@ -45,7 +45,6 @@ export class CppMsBuildAdapter implements BuildAdapter {
     return {
       command: msbuild,
       args,
-      // C++ projects typically need developer shell
       requiresDevShell: profile.useDeveloperShell,
       displayString,
     };

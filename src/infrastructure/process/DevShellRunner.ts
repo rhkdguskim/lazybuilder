@@ -1,8 +1,9 @@
 import { spawn as nodeSpawn } from 'node:child_process';
+import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { ProcessRunner, runCommand } from './ProcessRunner.js';
 import type { VsInstallation } from '../../domain/models/EnvironmentSnapshot.js';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 
 /**
  * Wraps build commands inside a Developer Command Prompt session.
@@ -23,34 +24,66 @@ export class DevShellRunner extends ProcessRunner {
   }
 
   startWithDevShell(command: string, args: string[], cwd?: string): void {
-    // Quote the command if it contains spaces and isn't already quoted
-    const quotedCmd = command.includes(' ') && !command.startsWith('"') ? `"${command}"` : command;
-    const fullCmd = `${quotedCmd} ${args.join(' ')}`;
+    // After VsDevCmd/vcvarsall runs, msbuild is in PATH.
+    // Use just the exe name to avoid path quoting issues.
+    const simpleName = command.includes('\\') || command.includes('/')
+      ? command.split(/[\\/]/).pop()!
+      : command;
+
+    // Normalize paths in args but preserve MSBuild switches (/p: /t: /m etc.)
+    const winArgs = args.map(a => {
+      // MSBuild switches start with / followed by a letter — don't touch these
+      if (/^\/[a-zA-Z]/.test(a)) return a;
+      // Quoted paths like "D:/project/..." — normalize slashes inside quotes
+      return a.replace(/\//g, '\\');
+    });
+    const fullCmd = `${simpleName} ${winArgs.join(' ')}`;
+
+    // Ensure Windows backslashes in path (msys/git-bash may convert)
+    const winPath = this.devShellPath.replace(/\//g, '\\');
 
     let callPart: string;
     if (this.useVsDevCmd) {
-      callPart = `call "${this.devShellPath}" -arch=${this.arch} -no_logo`;
+      callPart = `call "${winPath}" -arch=${this.arch} -no_logo`;
     } else {
-      callPart = `call "${this.devShellPath}" ${this.arch}`;
+      callPart = `call "${winPath}" ${this.arch}`;
     }
 
-    // Build the full script as a single string for cmd /S /C "..."
-    // /S strips the outer quotes, /C runs the command then exits
-    const script = `chcp 65001 >nul && ${callPart} && ${fullCmd}`;
-    this.startRaw(script, cwd);
+    // Write a temp .bat file to avoid cmd.exe quoting hell
+    this.startViaBat(callPart, fullCmd, cwd);
   }
 
-  /** Spawn cmd.exe with /S /C to run a script string */
-  private startRaw(script: string, cwd?: string): void {
-    // cmd /S /C "script" — /S causes cmd to strip the first and last quote
-    // so the inner quotes in paths like "C:\Program Files\..." work correctly
-    this.child = nodeSpawn('cmd.exe', ['/S', '/C', `"${script}"`], {
-      cwd,
+  /** Create a temporary .bat file and execute it — no quoting issues */
+  private startViaBat(setupCmd: string, buildCmd: string, cwd?: string): void {
+    const batPath = join(tmpdir(), `lazybuild_${Date.now()}.bat`);
+    const batContent = [
+      '@echo off',
+      'chcp 65001 >nul',
+      setupCmd,
+      'if %errorlevel% neq 0 exit /b %errorlevel%',
+      buildCmd,
+      'exit /b %errorlevel%',
+    ].join('\r\n');
+
+    writeFileSync(batPath, batContent, 'utf-8');
+
+    // Emit bat content as info for debugging
+    this.emit('stdout', `[bat] ${batPath}`);
+    this.emit('stdout', `[bat] setup: ${setupCmd}`);
+    this.emit('stdout', `[bat] build: ${buildCmd}`);
+
+    const winCwd = cwd?.replace(/\//g, '\\');
+    this.child = nodeSpawn('cmd.exe', ['/C', batPath], {
+      cwd: winCwd,
       env: process.env,
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
-      windowsVerbatimArguments: true,  // Prevent Node from escaping quotes
+    });
+
+    // Cleanup bat file when process exits
+    this.child.on('close', () => {
+      try { unlinkSync(batPath); } catch { /* ignore */ }
     });
 
     if (this.child.stdout) {

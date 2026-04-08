@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { ProgressPanel } from '../components/ProgressPanel.js';
 import { ScrollableList } from '../components/ScrollableList.js';
+import { PageHeader, Panel } from '../components/index.js';
 import { reduceListSelection } from '../navigation/listNavigation.js';
 import type { ProjectInfo, SolutionInfo } from '../../domain/models/ProjectInfo.js';
 
@@ -71,53 +72,66 @@ export const ProjectsTab: React.FC = () => {
   return (
     <Box flexDirection="row" padding={1} flexGrow={1} overflowY="hidden">
       {/* Left: project list */}
-      <Box flexDirection="column" width="45%" borderStyle="single" paddingX={1} overflowY="hidden">
-        <Text bold color="cyan">Targets ({items.length})</Text>
-        <Text color="gray">j/k or ↑↓ move, g/G jump, Enter opens Build</Text>
-        <Box height={1} />
-        <ScrollableList
-          selectedIdx={selectedIdx}
-          maxVisible={18}
-          onSelect={setSelectedIdx}
-          items={items.map((item, i) => {
-            const isSelected = i === selectedIdx;
-            if (item.kind === 'solution') {
-              const solution = item.data;
+      <Box flexDirection="column" width="45%" paddingRight={2} overflowY="hidden">
+        <PageHeader title="Projects" subtitle="Browse detected solutions and buildable projects." rightHint="j/k move | g/G jump | Enter build" />
+        <Panel title={`Targets (${items.length})`}>
+          <ScrollableList
+            selectedIdx={selectedIdx}
+            maxVisible={18}
+            onSelect={setSelectedIdx}
+            items={items.map((item, i) => {
+              const isSelected = i === selectedIdx;
+              if (item.kind === 'solution') {
+                const solution = item.data;
+                return (
+                  <Text key={item.key} inverse={isSelected}>
+                    {isSelected ? ' ▶ ' : '   '}
+                    <Text color="cyan">[SLN]</Text>
+                    {' '}{solution.name}.sln
+                    <Text color="gray"> ({solution.solutionType}, {solution.projects.length} proj)</Text>
+                  </Text>
+                );
+              }
+              const proj = item.data;
+              const icon = typeIcons[proj.projectType] ?? '?';
+              const color = typeColors[proj.projectType] ?? 'gray';
               return (
                 <Text key={item.key} inverse={isSelected}>
                   {isSelected ? ' ▶ ' : '   '}
-                  <Text color="cyan">[SLN]</Text>
-                  {' '}{solution.name}.sln
-                  <Text color="gray"> ({solution.solutionType}, {solution.projects.length} proj)</Text>
+                  <Text color={color}>[{icon}]</Text>
+                  {' '}{proj.name}
+                  {proj.riskFlags.length > 0 && <Text color="yellow"> !</Text>}
                 </Text>
               );
-            }
-            const proj = item.data;
-            const icon = typeIcons[proj.projectType] ?? '?';
-            const color = typeColors[proj.projectType] ?? 'gray';
-            return (
-              <Text key={item.key} inverse={isSelected}>
-                {isSelected ? ' ▶ ' : '   '}
-                <Text color={color}>[{icon}]</Text>
-                {' '}{proj.name}
-                {proj.riskFlags.length > 0 && <Text color="yellow"> !</Text>}
-              </Text>
-            );
-          })}
-        />
+            })}
+          />
+        </Panel>
       </Box>
 
       {/* Right: detail panel */}
-      <Box flexDirection="column" flexGrow={1} paddingLeft={2} overflowY="hidden">
-        {selected ? (
-          selected.kind === 'solution' ? (
-            <SolutionDetail solution={selected.data} />
-          ) : (
-            <ProjectDetail project={selected.data} />
-          )
-        ) : (
-          <Text color="gray">Select a project to view details</Text>
-        )}
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+        <PageHeader title={selected?.kind === 'solution' ? 'Solution Details' : 'Project Details'} subtitle="Inspect metadata before switching to Build." />
+        <Panel title="Details">
+          <>
+            {selected ? (
+              selected.kind === 'solution' ? (
+                <SolutionDetail solution={selected.data} />
+              ) : (
+                <ProjectDetail project={selected.data} />
+              )
+            ) : (
+              <Text color="gray">Select a project to view details</Text>
+            )}
+
+            <Box marginTop={1}>
+              <Text color="gray">
+                {selected?.kind === 'project'
+                  ? 'Enter opens Build with this target selected.'
+                  : 'Solutions are for inspection here. Open Build to choose a concrete target.'}
+              </Text>
+            </Box>
+          </>
+        </Panel>
       </Box>
     </Box>
   );

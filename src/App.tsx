@@ -25,7 +25,7 @@ const diagnosticsService = new DiagnosticsService();
 const App: React.FC = () => {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const terminalHeight = stdout?.rows ?? 30;
+  const termHeight = stdout?.rows ?? 30;
   const { activeTab, tabs } = useTabNavigation();
   const { snapshot, status: envStatus } = useEnvironmentScan();
   const { projects, status: projStatus } = useProjectScan();
@@ -98,11 +98,12 @@ const App: React.FC = () => {
     }
   }, { isActive: !!process.stdin.isTTY });
 
-  // Run diagnostics when both scans complete
+  // Run diagnostics when both scans complete + mark boot done
   useEffect(() => {
     if (envStatus === 'done' && snapshot && projStatus === 'done') {
       const items = diagnosticsService.analyze(snapshot, projects);
       setDiagnostics(items);
+      if (!bootCompleted) setBootCompleted();
     }
   }, [envStatus, snapshot, projStatus, projects]);
 
@@ -114,7 +115,7 @@ const App: React.FC = () => {
 
     const timer = setInterval(() => {
       setScanFrame(frame => (frame + 1) % 4);
-    }, 180);
+    }, 500);
 
     return () => clearInterval(timer);
   }, [envStatus]);
@@ -127,13 +128,15 @@ const App: React.FC = () => {
   ];
 
 
-  const isInitialScanning = envStatus === 'idle' || envStatus === 'scanning';
+  const bootCompleted = useAppStore(s => s.bootCompleted);
+  const setBootCompleted = useAppStore(s => s.setBootCompleted);
+  const isInitialScanning = !bootCompleted && (envStatus === 'idle' || envStatus === 'scanning');
   const scanDots = '.'.repeat((scanFrame % 4) + 1).padEnd(4, ' ');
   const scanBar = ['[=   ]', '[==  ]', '[=== ]', '[ ===]', '[  ==]', '[   =]'][scanFrame % 6];
 
   if (isInitialScanning) {
     return (
-      <Box flexDirection="column" width="100%" height={terminalHeight} overflowY="hidden" padding={1}>
+      <Box flexDirection="column" width="100%" height={termHeight} padding={1}>
         <Box flexShrink={0} justifyContent="space-between">
           <Text bold color="cyan">LazyBuild</Text>
           <Text color="gray">{process.cwd()}</Text>
@@ -152,7 +155,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <Box flexDirection="column" width="100%" height={terminalHeight} overflowY="hidden">
+    <Box flexDirection="column" width="100%" height={termHeight} overflowY="hidden">
       {/* Header */}
       <Box paddingX={1} justifyContent="space-between" flexShrink={0}>
         <Text bold color="cyan">LazyBuild</Text>

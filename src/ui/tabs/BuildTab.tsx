@@ -4,14 +4,15 @@ import { useAppStore } from '../store/useAppStore.js';
 import { useBuild } from '../hooks/useBuild.js';
 import { ProgressPanel } from '../components/ProgressPanel.js';
 import { ScrollableList } from '../components/ScrollableList.js';
+import { PageHeader, Panel } from '../components/index.js';
 import type { ProjectInfo, BuildConfiguration, SolutionInfo } from '../../domain/models/ProjectInfo.js';
 import type { BuildProfile } from '../../domain/models/BuildProfile.js';
 import type { BuildSystem } from '../../domain/enums.js';
 
-type FocusArea = 'targets' | 'settings' | 'action';
+type FocusArea = 'targets' | 'settings' | 'action' | 'output';
 type SettingField = 'configuration' | 'platform' | 'verbosity' | 'parallel' | 'devshell';
 
-const FOCUS_AREAS: FocusArea[] = ['targets', 'settings', 'action'];
+const FOCUS_AREAS: FocusArea[] = ['targets', 'settings', 'action', 'output'];
 const SETTING_FIELDS: SettingField[] = ['configuration', 'platform', 'verbosity', 'parallel', 'devshell'];
 const VERBOSITIES = ['quiet', 'minimal', 'normal', 'detailed', 'diagnostic'] as const;
 
@@ -95,12 +96,6 @@ export const BuildTab: React.FC = () => {
   useEffect(() => {
     setConfigIdx(0);
     setPlatformIdx(0);
-    // Auto-detect if dev shell needed
-    if (currentTarget?.buildSystem === 'msbuild' && currentTarget.project?.projectType === 'cpp-msbuild') {
-      setUseDevShell(!snapshot?.cpp.vcEnvironmentActive && !!snapshot?.cpp.vcvarsPath);
-    } else {
-      setUseDevShell(false);
-    }
   }, [targetIdx]);
 
   useEffect(() => {
@@ -160,7 +155,7 @@ export const BuildTab: React.FC = () => {
     if (status !== 'running' || !buildStartTime) return;
     const timer = setInterval(() => {
       setElapsedMs(Date.now() - buildStartTime);
-    }, 100);
+    }, 1000);
     return () => clearInterval(timer);
   }, [status, buildStartTime]);
 
@@ -263,7 +258,7 @@ export const BuildTab: React.FC = () => {
         return;
       }
       if (key.rightArrow || input === 'l') {
-        if (activeSetting === 'devshell') {
+        if (activeSetting === 'parallel') {
           setFocusArea('action');
           return;
         }
@@ -271,11 +266,7 @@ export const BuildTab: React.FC = () => {
         return;
       }
       if (input === ' ') {
-        if (activeSetting === 'devshell') {
-          setUseDevShell(!useDevShell);
-        } else {
-          setFocusArea('action');
-        }
+        setFocusArea('action');
         return;
       }
       if (key.return) {
@@ -289,7 +280,8 @@ export const BuildTab: React.FC = () => {
     }
 
     if (focusArea === 'action') {
-      if (key.downArrow || input === 'j' || input === 'G') {
+      if (key.downArrow || input === 'j') {
+        setFocusArea('output');
         return;
       }
       if (key.upArrow || input === 'k') {
@@ -297,20 +289,28 @@ export const BuildTab: React.FC = () => {
         setActiveSetting('devshell');
         return;
       }
-      if (key.leftArrow || input === 'h') {
-        setFocusArea('settings');
-        setActiveSetting('devshell');
-        return;
-      }
       if (key.escape) {
-        setFocusArea('settings');
-        setActiveSetting('devshell');
+        setFocusArea('targets');
         return;
       }
       if (key.return || input === ' ') {
         runBuild();
         return;
       }
+    }
+
+    if (focusArea === 'output') {
+      // j/k/g/G/f are handled by BuildOutputPanel's own useInput — don't intercept
+      if (key.tab) {
+        setFocusArea('targets');
+        return;
+      }
+      if (key.escape) {
+        setFocusArea('action');
+        return;
+      }
+      // All other keys pass through to BuildOutputPanel
+      return;
     }
 
     if (input === '\x1b[15~' || input === 'b' || (key.ctrl && input === 'b')) {
@@ -335,75 +335,109 @@ export const BuildTab: React.FC = () => {
 
   return (
     <Box flexDirection="column" flexGrow={1} overflowY="hidden" padding={1}>
-      {/* Top bar: action + status */}
-      <Box flexDirection="row" justifyContent="space-between" flexShrink={0}>
-        <Box>
+      <PageHeader
+        title="Build"
+        subtitle="Choose a target, adjust options, and run the build."
+        rightHint="Tab section | j/k move | h/l change | Enter build"
+      />
+
+      <Box flexDirection="row" flexShrink={0} marginBottom={1}>
+        <Box marginRight={1}>
           <Text inverse={focusArea === 'action'} color={status === 'running' ? 'red' : 'green'} bold>
             {status === 'running' ? ' ■ Cancel (Esc) ' : ' ▶ Build (Enter) '}
           </Text>
-          {status === 'running' && <Text color="yellow"> {formatDuration(elapsedMs)}</Text>}
-          {result && status !== 'running' && status !== 'idle' && (
-            <Text color={result.status === 'success' ? 'green' : 'red'}>
-              {' '}{result.status === 'success' ? '✔' : '✘'} {formatDuration(result.durationMs)} {result.errorCount}E {result.warningCount}W
-            </Text>
-          )}
         </Box>
-        <Text color="gray" wrap="truncate">{commandPreview ? `$ ${commandPreview}` : ''}</Text>
+        {statusLine ? (
+          <Text color={status === 'running' ? 'yellow' : result?.status === 'success' ? 'green' : 'red'}>
+            {statusLine}
+          </Text>
+        ) : (
+          <Text color="gray">Ready</Text>
+        )}
       </Box>
 
       {/* Main: left config + right output */}
       <Box flexDirection="row" flexGrow={1} overflowY="hidden" marginTop={1}>
         {/* Left: Targets + Settings */}
-        <Box flexDirection="column" width="35%" paddingRight={1} overflowY="hidden">
-          <Text bold color={focusArea === 'targets' ? 'cyan' : 'gray'}>Targets</Text>
-          <ScrollableList
-            selectedIdx={targetIdx}
-            maxVisible={8}
-            onSelect={setTargetIdx}
-            items={targets.map((target, i) => (
-              <Text key={target.path} inverse={i === targetIdx} wrap="truncate">
-                {i === targetIdx ? '▶ ' : '  '}{target.label}
-              </Text>
-            ))}
-          />
+        <Box flexDirection="column" width="40%" paddingRight={1} overflowY="hidden">
+          <Panel
+            title="Targets"
+            focused={focusArea === 'targets'}
+            subtitle={focusArea === 'targets' ? 'j/k or g/G to move' : ''}
+          >
+            <ScrollableList
+              selectedIdx={targetIdx}
+              maxVisible={8}
+              onSelect={setTargetIdx}
+              items={targets.map((target, i) => (
+                <Text key={target.path} inverse={i === targetIdx} wrap="truncate">
+                  {i === targetIdx ? '▶ ' : '  '}{target.label}
+                </Text>
+              ))}
+            />
+          </Panel>
 
           <Box marginTop={1} />
-          <Text bold color={focusArea === 'settings' ? 'cyan' : 'gray'}>Settings</Text>
-          <FieldRow
-            label="Config"
-            value={uniqueConfigs[configIdx] ?? 'Debug'}
-            active={focusArea === 'settings' && activeSetting === 'configuration'}
-            options={uniqueConfigs}
-            selectedIdx={configIdx}
-          />
-          <FieldRow
-            label="Platform"
-            value={uniquePlatforms[platformIdx] ?? 'Any CPU'}
-            active={focusArea === 'settings' && activeSetting === 'platform'}
-            options={uniquePlatforms}
-            selectedIdx={platformIdx}
-          />
-          <FieldRow
-            label="Verbose"
-            value={VERBOSITIES[verbosityIdx]!}
-            active={focusArea === 'settings' && activeSetting === 'verbosity'}
-            options={[...VERBOSITIES]}
-            selectedIdx={verbosityIdx}
-          />
-          <FieldRow
-            label="Parallel"
-            value={parallelBuild ? 'ON' : 'OFF'}
-            active={focusArea === 'settings' && activeSetting === 'parallel'}
-          />
-          <FieldRow
-            label="DevShell"
-            value={useDevShell ? 'ON' : 'OFF'}
-            active={focusArea === 'settings' && activeSetting === 'devshell'}
-          />
+          <Panel
+            title="Settings"
+            focused={focusArea === 'settings'}
+            subtitle={focusArea === 'settings' ? 'h/l changes values' : ''}
+          >
+            <>
+              <FieldRow
+                label="Config"
+                value={uniqueConfigs[configIdx] ?? 'Debug'}
+                active={focusArea === 'settings' && activeSetting === 'configuration'}
+                options={uniqueConfigs}
+                selectedIdx={configIdx}
+              />
+              <FieldRow
+                label="Platform"
+                value={uniquePlatforms[platformIdx] ?? 'Any CPU'}
+                active={focusArea === 'settings' && activeSetting === 'platform'}
+                options={uniquePlatforms}
+                selectedIdx={platformIdx}
+              />
+              <FieldRow
+                label="Verbose"
+                value={VERBOSITIES[verbosityIdx]!}
+                active={focusArea === 'settings' && activeSetting === 'verbosity'}
+                options={[...VERBOSITIES]}
+                selectedIdx={verbosityIdx}
+              />
+              <FieldRow
+                label="Parallel"
+                value={parallelBuild ? 'ON' : 'OFF'}
+                active={focusArea === 'settings' && activeSetting === 'parallel'}
+                hint={parallelBuild ? '/m enabled' : 'single process'}
+              />
+              <FieldRow
+                label="DevShell"
+                value={useDevShell ? 'ON' : 'OFF'}
+                active={focusArea === 'settings' && activeSetting === 'devshell'}
+                hint={useDevShell ? 'VsDevCmd enabled' : 'direct execution'}
+              />
+            </>
+          </Panel>
         </Box>
 
         {/* Right: Live output (isolated to prevent logEntries re-renders from cascading) */}
-        <BuildOutputPanel />
+        <Box flexDirection="column" flexGrow={1} overflowY="hidden" paddingLeft={1}>
+          <Panel title="Command Preview">
+            <Text color="gray" wrap="wrap">{commandPreview ? `$ ${commandPreview}` : 'Select a target to preview the command.'}</Text>
+          </Panel>
+
+          <Box marginTop={1} />
+          <Panel title="Result">
+            <ResultRow label="Status" value={result ? result.status : status === 'running' ? 'building' : '-'} color={result?.status === 'success' ? 'green' : result?.status === 'failure' ? 'red' : 'gray'} />
+            <ResultRow label="Duration" value={result ? formatDuration(result.durationMs) : '-'} />
+            <ResultRow label="Errors" value={result ? String(result.errorCount) : '-'} color={result && result.errorCount > 0 ? 'red' : 'gray'} />
+            <ResultRow label="Warnings" value={result ? String(result.warningCount) : '-'} color={result && result.warningCount > 0 ? 'yellow' : 'gray'} />
+          </Panel>
+
+          <Box marginTop={1} />
+          <BuildOutputPanel focused={focusArea === 'output'} />
+        </Box>
       </Box>
 
       {/* Bottom hints */}
@@ -423,23 +457,53 @@ interface FieldRowProps {
   selectedIdx?: number;
 }
 
-/** Isolated component — only re-renders when logEntries or buildStatus changes */
-const BuildOutputPanel: React.FC = React.memo(() => {
+/** Isolated component with scroll — only re-renders when logEntries or buildStatus changes */
+const BuildOutputPanel: React.FC<{ focused?: boolean }> = React.memo(({ focused = false }) => {
   const logEntries = useAppStore(s => s.logEntries);
   const status = useAppStore(s => s.buildStatus);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [following, setFollowing] = useState(true);
+
+  const maxVisible = 15;
+  const maxOffset = Math.max(0, logEntries.length - maxVisible);
+  const effectiveOffset = following ? maxOffset : Math.min(scrollOffset, maxOffset);
+  const visible = logEntries.slice(effectiveOffset, effectiveOffset + maxVisible);
+
+  // Auto-follow new entries
+  useEffect(() => {
+    if (following) setScrollOffset(maxOffset);
+  }, [logEntries.length, following, maxOffset]);
+
+  // Scroll input when focused
+  useInput((input, key) => {
+    if (key.upArrow || input === 'k') {
+      setFollowing(false);
+      setScrollOffset(o => Math.max(0, o - 1));
+    }
+    if (key.downArrow || input === 'j') {
+      const next = Math.min(maxOffset, scrollOffset + 1);
+      setScrollOffset(next);
+      if (next >= maxOffset) setFollowing(true);
+    }
+    if (input === 'g') { setFollowing(false); setScrollOffset(0); }
+    if (input === 'G') { setFollowing(true); setScrollOffset(maxOffset); }
+    if (input === 'f') setFollowing(f => !f);
+  }, { isActive: isTTY && focused });
 
   return (
-    <Box flexDirection="column" flexGrow={1} borderStyle="single" borderColor="gray" paddingX={1} overflowY="hidden">
-      <Box flexDirection="row" justifyContent="space-between" flexShrink={0}>
-        <Text bold color="cyan">Output</Text>
-        <Text color="gray">{logEntries.length} lines</Text>
-      </Box>
-
+    <Panel title="Output" focused={focused} subtitle={
+      focused
+        ? `${logEntries.length} lines | ${following ? '⬇ follow' : '⏸ scroll'} | j/k g/G f`
+        : `${logEntries.length} lines`
+    }>
       <Box flexDirection="column" flexGrow={1} overflowY="hidden">
         {status === 'idle' && logEntries.length === 0 && (
           <Text color="gray">Build output will appear here</Text>
         )}
-        {logEntries.slice(-25).map((entry) => (
+        {status === 'running' && logEntries.length === 0 && (
+          <ProgressPanel label="Waiting for output..." status="scanning" />
+        )}
+        {visible.map((entry) => (
           <Text key={entry.index} color={
             entry.level === 'error' ? 'red' :
             entry.level === 'warning' ? 'yellow' :
@@ -448,8 +512,11 @@ const BuildOutputPanel: React.FC = React.memo(() => {
             {entry.text}
           </Text>
         ))}
+        {logEntries.length > maxVisible && !focused && (
+          <Text color="gray">Focus output (Tab) to scroll</Text>
+        )}
       </Box>
-    </Box>
+    </Panel>
   );
 });
 
@@ -460,27 +527,36 @@ const FieldRow: React.FC<FieldRowProps> = ({ label, value, active, hint, options
 
   return (
     <Box flexDirection="row" marginBottom={0}>
-      <Box width={16} flexShrink={0}>
+      <Box width={12} flexShrink={0}>
         <Text color={active ? 'cyan' : 'gray'} bold={active}>
           {active ? '▶ ' : '  '}{label}
         </Text>
       </Box>
-      <Box flexShrink={0}>
+      <Box flexGrow={1}>
         {hasMultiple ? (
-          <Text>
+          <Text wrap="wrap">
             <Text color={active ? 'white' : 'gray'}>◄ </Text>
             <Text bold inverse={active} color={active ? 'white' : undefined}> {value} </Text>
             <Text color={active ? 'white' : 'gray'}> ► </Text>
             <Text color="gray">({idx + 1}/{total})</Text>
           </Text>
         ) : (
-          <Text bold={active}>{value}</Text>
+          <Text bold={active} wrap="wrap">{value}</Text>
         )}
         {hint && <Text color="gray"> {hint}</Text>}
       </Box>
     </Box>
   );
 };
+
+const ResultRow: React.FC<{ label: string; value: string; color?: string }> = ({ label, value, color }) => (
+  <Box flexDirection="row">
+    <Box width={12}>
+      <Text color="gray">{label}</Text>
+    </Box>
+    <Text color={color as any}>{value}</Text>
+  </Box>
+);
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
