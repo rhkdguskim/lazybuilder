@@ -15,12 +15,31 @@ export function useBuildTargets() {
   const targetQuery = useAppStore((s) => s.buildTargetQuery);
   const targetFilter = useAppStore((s) => s.buildTargetFilter);
   const expandedSolutions = useAppStore((s) => s.expandedSolutions);
+  const favouriteTargets = useAppStore((s) => s.favouriteTargets);
+  const lastBuiltTargetPath = useAppStore((s) => s.lastBuiltTargetPath);
+
+  // Sort top-level rows (solutions + standalone projects): favourites first,
+  // then last-built, then alphabetical. Children inside expanded solutions
+  // stay attached to their parent — we never split a solution group.
+  const topLevelComparator = (a: { path: string; label: string }, b: { path: string; label: string }) => {
+    const aFav = favouriteTargets.has(a.path) ? 1 : 0;
+    const bFav = favouriteTargets.has(b.path) ? 1 : 0;
+    if (aFav !== bFav) return bFav - aFav;
+    const aLast = a.path === lastBuiltTargetPath ? 1 : 0;
+    const bLast = b.path === lastBuiltTargetPath ? 1 : 0;
+    if (aLast !== bLast) return bLast - aLast;
+    return a.label.localeCompare(b.label);
+  };
 
   const targets = useMemo<BuildTarget[]>(() => {
     const list: BuildTarget[] = [];
     const queryActive = targetQuery.trim().length > 0;
 
-    for (const sln of solutions) {
+    const sortedSolutions = [...solutions].sort((a, b) =>
+      topLevelComparator({ path: a.filePath, label: a.name }, { path: b.filePath, label: b.name }),
+    );
+
+    for (const sln of sortedSolutions) {
       const expanded = !!expandedSolutions[sln.filePath];
       list.push({
         kind: 'solution',
@@ -34,6 +53,8 @@ export function useBuildTargets() {
         expandable: sln.projects.length > 0,
         expanded,
         childCount: sln.projects.length,
+        isFavourite: favouriteTargets.has(sln.filePath),
+        isLastBuilt: sln.filePath === lastBuiltTargetPath,
         searchable: [
           sln.name,
           sln.filePath,
@@ -58,6 +79,8 @@ export function useBuildTargets() {
             projectType: child.projectType,
             depth: 1,
             parentSolutionPath: sln.filePath,
+            isFavourite: favouriteTargets.has(child.filePath),
+            isLastBuilt: child.filePath === lastBuiltTargetPath,
             searchable: [
               child.name,
               child.filePath,
@@ -74,7 +97,12 @@ export function useBuildTargets() {
       }
     }
 
-    for (const proj of projects.filter((p) => !p.solutionPath)) {
+    const standaloneProjects = projects
+      .filter((p) => !p.solutionPath)
+      .sort((a, b) =>
+        topLevelComparator({ path: a.filePath, label: a.name }, { path: b.filePath, label: b.name }),
+      );
+    for (const proj of standaloneProjects) {
       list.push({
         kind: 'project',
         label: `${proj.name} [${proj.projectType}]`,
@@ -84,6 +112,8 @@ export function useBuildTargets() {
         buildSystem: proj.buildSystem,
         projectType: proj.projectType,
         depth: 0,
+        isFavourite: favouriteTargets.has(proj.filePath),
+        isLastBuilt: proj.filePath === lastBuiltTargetPath,
         searchable: [
           proj.name,
           proj.filePath,
@@ -99,7 +129,8 @@ export function useBuildTargets() {
     }
 
     return list;
-  }, [projects, solutions, expandedSolutions, targetQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, solutions, expandedSolutions, targetQuery, favouriteTargets, lastBuiltTargetPath]);
 
   const filteredTargets = useMemo(() => {
     const query = targetQuery.trim().toLowerCase();

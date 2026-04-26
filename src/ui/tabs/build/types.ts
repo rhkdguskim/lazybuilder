@@ -39,4 +39,8 @@ export interface BuildTarget {
   childCount?: number;
   /** For depth-1 child rows: solution.filePath of the parent. */
   parentSolutionPath?: string;
+  /** True if the user has pinned this target via the `!` key. */
+  isFavourite?: boolean;
+  /** True if this target was the most recent build. */
+  isLastBuilt?: boolean;
 }

@@ -30,6 +30,9 @@ export const BuildTab: React.FC = () => {
   // Persistent target/search state in store
   const targetIdx = useAppStore((s) => s.buildTargetIdx);
   const setTargetIdx = useAppStore((s) => s.setBuildTargetIdx);
+  const pendingTargetPath = useAppStore((s) => s.pendingTargetPath);
+  const selectBuildTargetByPath = useAppStore((s) => s.selectBuildTargetByPath);
+  const pendingRebuildToken = useAppStore((s) => s.pendingRebuildToken);
   const targetQuery = useAppStore((s) => s.buildTargetQuery);
   const setTargetQuery = useAppStore((s) => s.setBuildTargetQuery);
   const targetFilter = useAppStore((s) => s.buildTargetFilter);
@@ -41,6 +44,7 @@ export const BuildTab: React.FC = () => {
   const expandAllSolutions = useAppStore((s) => s.expandAllSolutions);
   const collapseAllSolutions = useAppStore((s) => s.collapseAllSolutions);
   const solutions = useAppStore((s) => s.solutions);
+  const toggleFavouriteTarget = useAppStore((s) => s.toggleFavouriteTarget);
 
   const { targets, filteredTargets } = useBuildTargets();
   const currentTarget = filteredTargets[targetIdx];
@@ -60,6 +64,31 @@ export const BuildTab: React.FC = () => {
       setTargetIdx(filteredTargets.length - 1);
     }
   }, [targetIdx, filteredTargets.length, setTargetIdx]);
+
+  // Honor a pending target selection from another tab (e.g., Projects → Enter).
+  // Find the row by path and move the cursor there, then clear the request.
+  React.useEffect(() => {
+    if (!pendingTargetPath || filteredTargets.length === 0) return;
+    const idx = filteredTargets.findIndex((t) => t.path === pendingTargetPath);
+    if (idx >= 0 && idx !== targetIdx) {
+      setTargetIdx(idx);
+    }
+    selectBuildTargetByPath(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTargetPath, filteredTargets.length]);
+
+  // One-shot rebuild trigger: when token bumps, run the build for whatever
+  // target the cursor lands on (which the previous effect just moved).
+  // Token is bumped by `triggerRebuildLast`, fired by the global `.` key.
+  const lastRebuildToken = React.useRef(pendingRebuildToken);
+  React.useEffect(() => {
+    if (pendingRebuildToken === lastRebuildToken.current) return;
+    lastRebuildToken.current = pendingRebuildToken;
+    if (!currentTarget || ctrl.status === 'running') return;
+    setFocusArea('targets');
+    ctrl.runBuild();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingRebuildToken, currentTarget?.path]);
 
   const moveToTargetBoundary = (direction: 'top' | 'bottom') => {
     setTargetIdx(direction === 'top' ? 0 : Math.max(0, filteredTargets.length - 1));
@@ -113,7 +142,22 @@ export const BuildTab: React.FC = () => {
       }
 
       if (buildSearchActive) {
-        if (key.escape || key.return) {
+        if (key.escape) {
+          setBuildSearchActive(false);
+          return;
+        }
+        // While typing, arrows still navigate the filtered list — typical
+        // fzf-style behavior. Enter on a single match would also build, but
+        // we keep Enter as "finish editing the query" for now.
+        if (key.upArrow) {
+          setTargetIdx(Math.max(0, targetIdx - 1));
+          return;
+        }
+        if (key.downArrow) {
+          setTargetIdx(Math.max(0, Math.min(filteredTargets.length - 1, targetIdx + 1)));
+          return;
+        }
+        if (key.return) {
           setBuildSearchActive(false);
           return;
         }
@@ -182,6 +226,11 @@ export const BuildTab: React.FC = () => {
           toggleSolutionExpanded(currentTarget.path);
           return;
         }
+        // '!' pins/unpins the current target so it sorts to the top.
+        if (input === '!' && currentTarget) {
+          toggleFavouriteTarget(currentTarget.path);
+          return;
+        }
         // E/C bulk toggles.
         if (input === 'E') {
           expandAllSolutions(solutions.map((s) => s.filePath));
@@ -218,8 +267,19 @@ export const BuildTab: React.FC = () => {
             return;
           }
         }
-        if (key.return && currentTarget) {
+        // 's' opens the settings pane explicitly. Previously Enter did this,
+        // but Enter is now reserved for "build now" — Codex finding.
+        if (input === 's' && currentTarget) {
           setFocusArea('settings');
+          return;
+        }
+        // Enter on a closed expandable solution → expand. Otherwise build now.
+        if (key.return && currentTarget) {
+          if (currentTarget.kind === 'solution' && currentTarget.expandable && !currentTarget.expanded) {
+            setSolutionExpanded(currentTarget.path, true);
+            return;
+          }
+          ctrl.runBuild();
           return;
         }
       }
@@ -354,6 +414,7 @@ export const BuildTab: React.FC = () => {
     }
     if (buildSearchActive) {
       return [
+        { key: '↑↓', label: 'Move' },
         { key: 'Enter', label: 'Done' },
         { key: 'Esc', label: 'Cancel' },
         { key: '⌃U', label: 'Clear' },
@@ -363,11 +424,12 @@ export const BuildTab: React.FC = () => {
       case 'targets':
         return [
           { key: 'j/k', label: 'Move' },
-          { key: 'Space', label: 'Toggle' },
-          { key: 'h/l', label: 'Fold' },
+          { key: 'Enter', label: 'Build', primary: true },
+          { key: 's', label: 'Settings' },
+          { key: '!', label: 'Pin' },
+          { key: '.', label: 'Rebuild last' },
           { key: '/', label: 'Search' },
           { key: 'f/F', label: 'Filter' },
-          { key: 'Enter', label: 'Settings', primary: true },
         ];
       case 'settings':
         return [

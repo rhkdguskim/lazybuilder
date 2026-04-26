@@ -15,6 +15,7 @@ const GLOBAL_KEYS: KeyEntry[] = [
   { key: '?', label: 'Toggle this help' },
   { key: '1–8', label: 'Jump to tab' },
   { key: '[ / ]', label: 'Prev / Next tab' },
+  { key: '.', label: 'Rebuild last (any tab)' },
   { key: 'q', label: 'Quit' },
 ];
 
@@ -34,13 +35,18 @@ const TAB_KEYS: Record<string, KeyEntry[]> = {
     { key: 'Enter', label: 'Open Build (project)' },
   ],
   build: [
+    { key: 'Enter / b', label: 'Build current target' },
+    { key: '.', label: 'Rebuild last (any tab)' },
+    { key: 's', label: 'Open settings panel' },
+    { key: '!', label: 'Pin / unpin target' },
     { key: 'Tab', label: 'Cycle focus area' },
     { key: '/', label: 'Search targets' },
     { key: 'f / F', label: 'Cycle filter' },
     { key: 'x', label: 'Clear search & filter' },
+    { key: 'Space', label: 'Expand / collapse solution' },
+    { key: 'E / C', label: 'Expand / collapse all' },
     { key: 'j/k h/l', label: 'Move / change value' },
-    { key: 'Enter / b', label: 'Run build' },
-    { key: 'a', label: 'Quick check' },
+    { key: 'a', label: 'Quick check (analyzers)' },
     { key: 'Esc / c', label: 'Cancel running build' },
   ],
   diagnostics: [

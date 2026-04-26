@@ -35,6 +35,10 @@ export function useBuildController(currentTarget: BuildTarget | undefined) {
   const useDevShell = useAppStore((s) => s.buildDevShell);
   const setUseDevShell = useAppStore((s) => s.setBuildDevShell);
   const buildStartTime = useAppStore((s) => s.buildStartTime);
+  const setLastBuiltTargetPath = useAppStore((s) => s.setLastBuiltTargetPath);
+  const setLastBuildProfileSnapshot = useAppStore((s) => s.setLastBuildProfileSnapshot);
+  const configByTarget = useAppStore((s) => s.configByTarget);
+  const setConfigForTarget = useAppStore((s) => s.setConfigForTarget);
 
   const [elapsedMs, setElapsedMs] = useState(0);
 
@@ -64,11 +68,23 @@ export function useBuildController(currentTarget: BuildTarget | undefined) {
   const uniqueConfigs = useMemo(() => [...new Set(availableConfigs.map((c) => c.configuration))], [availableConfigs]);
   const uniquePlatforms = useMemo(() => [...new Set(availableConfigs.map((c) => c.platform))], [availableConfigs]);
 
-  // Reset to first config/platform when target changes
+  // When the target changes, restore the user's last-used config + platform
+  // for that target (if remembered), otherwise default to index 0.
   useEffect(() => {
-    setConfigIdx(0);
-    setPlatformIdx(0);
-  }, [currentTarget?.path, setConfigIdx, setPlatformIdx]);
+    if (!currentTarget) return;
+    const remembered = configByTarget[currentTarget.path];
+    if (remembered) {
+      const cIdx = uniqueConfigs.indexOf(remembered.configuration);
+      const pIdx = uniquePlatforms.indexOf(remembered.platform);
+      setConfigIdx(cIdx >= 0 ? cIdx : 0);
+      setPlatformIdx(pIdx >= 0 ? pIdx : 0);
+    } else {
+      setConfigIdx(0);
+      setPlatformIdx(0);
+    }
+    // Intentionally exclude configByTarget so changing it doesn't re-fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTarget?.path, uniqueConfigs, uniquePlatforms, setConfigIdx, setPlatformIdx]);
 
   // Clamp config/platform indices when the option count shrinks
   useEffect(() => {
@@ -115,11 +131,22 @@ export function useBuildController(currentTarget: BuildTarget | undefined) {
       })
     : HARDWARE.cpuCores;
 
+  const recordLastBuilt = (p: BuildProfile) => {
+    setLastBuiltTargetPath(p.targetPath);
+    setLastBuildProfileSnapshot({
+      targetPath: p.targetPath,
+      config: p.configuration,
+      platform: p.platform,
+    });
+    setConfigForTarget(p.targetPath, p.configuration, p.platform);
+  };
+
   const runBuild = () => {
     if (!currentTarget || !profile) return;
     const proj = currentTarget.project ?? currentTarget.solution?.projects[0];
     if (proj) {
       setElapsedMs(0);
+      recordLastBuilt(profile);
       start(proj, profile);
     }
   };
@@ -145,6 +172,7 @@ export function useBuildController(currentTarget: BuildTarget | undefined) {
     };
 
     setElapsedMs(0);
+    recordLastBuilt(checkProfile);
     start(proj, checkProfile);
   };
 

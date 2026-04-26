@@ -143,6 +143,19 @@ const App: React.FC = () => {
       setShowHelp(v => !v);
       return;
     }
+    // Global rebuild-last: '.' replays the last build from any tab.
+    if (input === '.' && !showHelp) {
+      const ok = useAppStore.getState().triggerRebuildLast();
+      if (!ok) {
+        useAppStore.getState().pushNotification({
+          severity: 'warning',
+          title: 'No previous build',
+          detail: 'Run a build first; "." will then replay it.',
+          ttlMs: 4000,
+        });
+      }
+      return;
+    }
     if (input === 'i' && activeTab === 'diagnostics') {
       toolchain.open();
       return;

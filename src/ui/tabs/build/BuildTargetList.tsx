@@ -80,6 +80,12 @@ export const BuildTargetList: React.FC<Props> = ({
                 const cursor = isSelected ? `${theme.glyphs.focus} ` : '  ';
                 const tagColor = target.kind === 'solution' ? theme.color.accent.primary : theme.color.status.ok;
                 const isChild = target.depth === 1;
+                const favStar = target.isFavourite ? (
+                  <Text color={theme.color.status.warning as any} bold>★ </Text>
+                ) : null;
+                const lastBadge = target.isLastBuilt ? (
+                  <Text color={theme.color.accent.primary as any} bold>● </Text>
+                ) : null;
 
                 if (target.kind === 'solution') {
                   const marker = target.expandable
@@ -92,6 +98,8 @@ export const BuildTargetList: React.FC<Props> = ({
                       {cursor}
                       <Text color={theme.color.accent.primary as any}>{marker}</Text>
                       {' '}
+                      {favStar}
+                      {lastBadge}
                       <Text color={tagColor as any}>[SLN]</Text>{' '}
                       {target.label}
                       <Text color={theme.color.text.muted as any}> {compactPath(target.path, 24)}</Text>
@@ -107,6 +115,8 @@ export const BuildTargetList: React.FC<Props> = ({
                   <Text key={target.path} inverse={isSelected} wrap="truncate">
                     {cursor}
                     {indent}
+                    {favStar}
+                    {lastBadge}
                     <Text color={tagColor as any}>[PRJ]</Text>{' '}
                     {target.label}
                     <Text color={theme.color.text.muted as any}> {compactPath(target.path, isChild ? 22 : 28)}</Text>

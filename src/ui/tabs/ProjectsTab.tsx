@@ -51,6 +51,7 @@ export const ProjectsTab: React.FC = () => {
   const setSolutionExpanded = useAppStore(s => s.setSolutionExpanded);
   const expandAllSolutions = useAppStore(s => s.expandAllSolutions);
   const collapseAllSolutions = useAppStore(s => s.collapseAllSolutions);
+  const selectBuildTargetByPath = useAppStore(s => s.selectBuildTargetByPath);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [focus, setFocus] = useState<'list' | 'detail'>('list');
 
@@ -173,6 +174,9 @@ export const ProjectsTab: React.FC = () => {
         return;
       }
       if (selected?.kind === 'project') {
+        // Hand off to Build tab WITH the chosen project pre-selected, so the
+        // user doesn't land on whatever row the cursor was on last.
+        selectBuildTargetByPath(selected.data.filePath);
         setActiveTab('build');
       }
     }
