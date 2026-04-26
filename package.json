@@ -38,8 +38,6 @@
   "files": [
     "bin/",
     "dist/",
-    "agent.md",
-    "docs/agents/",
     "README.md",
     "LICENSE"
   ],
@@ -50,14 +48,19 @@
     "prepare": "test -d node_modules/typescript && tsc -p tsconfig.json || true",
     "prepublishOnly": "tsc -p tsconfig.json",
     "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.3.0",
     "fast-glob": "^3.3.0",
     "fast-xml-parser": "^4.4.0",
@@ -65,14 +68,21 @@
     "ink": "^5.2.0",
     "react": "^18.3.0",
     "tree-kill": "^1.2.2",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
     "ink-testing-library": "^4.0.0",
+    "prettier": "^3.3.0",
     "tsx": "^4.16.0",
     "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^2.0.0"
   }
 }

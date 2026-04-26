@@ -2,6 +2,7 @@ import React from 'react';
 import { render } from 'ink';
 import { Writable } from 'node:stream';
 import App from './App.js';
+import { logger, errToLog } from './infrastructure/logging/Logger.js';
 
 // ── Terminal setup ──────────────────────────────────────────────
 const realStdout = process.stdout;
@@ -23,7 +24,16 @@ realStdout.write('\x1b[?1006h');  // SGR mouse mode
 process.on('exit', cleanup);
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
-process.on('uncaughtException', (err) => { cleanup(); console.error(err); process.exit(1); });
+process.on('uncaughtException', (err) => {
+  cleanup();
+  logger.fatal('uncaughtException', errToLog(err));
+  // Mirror to stderr after cleanup so the user sees a stack on the real terminal
+  process.stderr.write(`[lazybuilder] fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandledRejection', errToLog(reason));
+});
 
 // ── Flicker-free rendering ─────────────────────────────────────
 //
