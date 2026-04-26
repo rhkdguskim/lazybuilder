@@ -127,7 +127,12 @@ export type SupportedDocKind = 'csproj' | 'globalJson' | 'unsupported';
 
 export function classifyDocument(uri: string): SupportedDocKind {
   const lower = uri.toLowerCase();
-  if (lower.endsWith('.csproj') || lower.endsWith('.fsproj') || lower.endsWith('.vbproj')) {
+  if (
+    lower.endsWith('.csproj') ||
+    lower.endsWith('.fsproj') ||
+    lower.endsWith('.vbproj') ||
+    lower.endsWith('.vcxproj')
+  ) {
     return 'csproj';
   }
   if (lower.endsWith('/global.json') || lower.endsWith('\\global.json') || lower.endsWith('global.json')) {
