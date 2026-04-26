@@ -52,8 +52,13 @@ export const Panel: React.FC<PanelProps> = ({
   marginTop,
   marginBottom,
 }) => {
+  // Focus is the most important visual: focused panels MUST show the cyan
+  // ring even when status is set (status acts only as a secondary tint when
+  // unfocused). An explicit `borderColor` prop still wins for hard overrides.
   const resolvedBorder = borderColor
-    ?? (status ? statusColor(status) : focused ? theme.color.border.focused : theme.color.border.default);
+    ?? (focused
+      ? theme.color.border.focused
+      : status ? statusColor(status) : theme.color.border.default);
   const titleColor = focused ? theme.color.focus.title : theme.color.focus.titleDim;
   const focusEdge = focused ? `${theme.glyphs.focus} ` : '  ';
 

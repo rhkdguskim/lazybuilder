@@ -65,6 +65,7 @@ export const BuildTargetList: React.FC<Props> = ({
       <ScrollableList
         selectedIdx={targetIdx}
         maxVisible={maxVisible}
+        scrollbar
         onSelect={onSelectTarget}
         mouseScroll={false}
         items={

@@ -19,9 +19,7 @@ const GLOBAL_KEYS: KeyEntry[] = [
 ];
 
 const TAB_KEYS: Record<string, KeyEntry[]> = {
-  overview: [
-    { key: 'j/k', label: 'Move' },
-  ],
+  overview: [],
   environment: [
     { key: 'Tab', label: 'Switch panel focus' },
     { key: 'j/k', label: 'Move / scroll' },

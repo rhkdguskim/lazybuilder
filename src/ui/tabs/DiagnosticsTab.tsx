@@ -71,6 +71,7 @@ export const DiagnosticsTab: React.FC = () => {
         <ScrollableList
           selectedIdx={selectedIdx}
           maxVisible={15}
+          scrollbar
           onSelect={setSelectedIdx}
           items={filtered.length === 0
             ? [

@@ -228,6 +228,7 @@ export const ProjectsTab: React.FC = () => {
             <ScrollableList
               selectedIdx={selectedIdx}
               maxVisible={18}
+              scrollbar
               onSelect={setSelectedIdx}
               items={rows.map((row, i) => (
                 <ProjectsRowView key={row.key} row={row} selected={i === selectedIdx} />

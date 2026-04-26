@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { reduceLogNavigation } from '../navigation/logNavigation.js';
-import { EmptyState, KeyHints, Panel, PageHeader, TabFrame } from '../components/index.js';
+import { EmptyState, KeyHints, Panel, PageHeader, TabFrame, ScrollPane } from '../components/index.js';
 import { theme } from '../themes/theme.js';
 
 type LogFilter = 'all' | 'error' | 'warning' | 'stderr';
@@ -46,14 +46,42 @@ export const LogsTab: React.FC = () => {
 
   // Auto-follow
   const effectiveOffset = following ? maxOffset : Math.min(scrollOffset, maxOffset);
-  const visible = filtered.slice(effectiveOffset, effectiveOffset + windowSize);
+  const renderedItems = useMemo<React.ReactNode[]>(() => filtered.map((entry) => {
+    const marker =
+      entry.level === 'error' ? 'E '
+      : entry.level === 'warning' ? 'W '
+      : entry.source === 'stderr' ? 'S '
+      : '  ';
+    const color =
+      entry.level === 'error' ? theme.color.status.danger
+      : entry.level === 'warning' ? theme.color.status.warning
+      : entry.source === 'stderr' ? theme.color.status.danger
+      : undefined;
+    return (
+      <Text key={entry.index} color={color as any} wrap="truncate">
+        <Text bold>{marker}</Text>{entry.text}
+      </Text>
+    );
+  }), [filtered]);
 
   const errorCount = logEntries.filter(e => e.level === 'error').length;
   const warnCount = logEntries.filter(e => e.level === 'warning').length;
 
   useInput((input, key) => {
-    if (key.tab || input === 'l') setFilterIdx(i => (i + 1) % FILTERS.length);
-    if (input === 'h') setFilterIdx(i => (i - 1 + FILTERS.length) % FILTERS.length);
+    // Ctrl+L must be checked before bare 'l' because the chord delivers
+    // input==='l' AND key.ctrl together.
+    if (key.ctrl && input === 'l') {
+      clearLogs();
+      return;
+    }
+    if (key.tab || input === 'l') {
+      setFilterIdx(i => (i + 1) % FILTERS.length);
+      return;
+    }
+    if (input === 'h') {
+      setFilterIdx(i => (i - 1 + FILTERS.length) % FILTERS.length);
+      return;
+    }
     if (input === 'g') {
       const next = reduceLogNavigation({ following, scrollOffset, maxOffset }, 'top');
       setFollowing(next.following);
@@ -82,8 +110,8 @@ export const LogsTab: React.FC = () => {
       const next = reduceLogNavigation({ following, scrollOffset, maxOffset }, 'toggle-follow');
       setFollowing(next.following);
       setScrollOffset(next.scrollOffset);
+      return;
     }
-    if (key.ctrl && input === 'l') clearLogs();
   }, { isActive: !!process.stdin.isTTY && isActiveTab });
 
   const headerRightHint =
@@ -119,16 +147,13 @@ export const LogsTab: React.FC = () => {
 
       {/* Log view */}
       <Panel title="Output" focused subtitle={following ? 'live · auto-follow' : 'paused — j/k to scroll, f to resume'} flexGrow={1}>
-        {visible.length > 0 ? (
-          visible.map((entry) => (
-            <Text key={entry.index} color={
-              entry.level === 'error' ? theme.color.status.danger :
-              entry.level === 'warning' ? theme.color.status.warning :
-              entry.source === 'stderr' ? theme.color.status.danger : undefined
-            } wrap="truncate">
-              {entry.text}
-            </Text>
-          ))
+        {filtered.length > 0 ? (
+          <ScrollPane
+            items={renderedItems}
+            scrollOffset={effectiveOffset}
+            visibleHeight={windowSize}
+            showOverflowHints={false}
+          />
         ) : (
           <EmptyState
             title={logEntries.length === 0 ? 'No build logs yet' : 'No entries match filter'}

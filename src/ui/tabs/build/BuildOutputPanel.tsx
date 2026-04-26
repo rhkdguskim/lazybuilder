@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../../store/useAppStore.js';
-import { Panel, LoadingState } from '../../components/index.js';
+import { Panel, LoadingState, ScrollPane } from '../../components/index.js';
 import { useMouseInput } from '../../hooks/useMouseInput.js';
 import { theme } from '../../themes/theme.js';
 
@@ -21,7 +21,6 @@ export const BuildOutputPanel: React.FC<{ focused?: boolean; minColumn: number }
 
     const maxOffset = Math.max(0, logEntries.length - MAX_VISIBLE);
     const effectiveOffset = following ? maxOffset : Math.min(scrollOffset, maxOffset);
-    const visible = logEntries.slice(effectiveOffset, effectiveOffset + MAX_VISIBLE);
 
     useEffect(() => {
       if (following) setScrollOffset(maxOffset);
@@ -71,6 +70,24 @@ export const BuildOutputPanel: React.FC<{ focused?: boolean; minColumn: number }
       ? `${logEntries.length} lines · ${following ? theme.glyphs.follow : 'Scroll'} · j/k g/G f`
       : `${logEntries.length} lines`;
 
+    const items = useMemo<React.ReactNode[]>(() => logEntries.map((entry) => {
+      const marker =
+        entry.level === 'error' ? 'E '
+        : entry.level === 'warning' ? 'W '
+        : entry.source === 'stderr' ? 'S '
+        : '  ';
+      const color =
+        entry.level === 'error' ? theme.color.status.danger
+        : entry.level === 'warning' ? theme.color.status.warning
+        : entry.source === 'stderr' ? theme.color.status.danger
+        : undefined;
+      return (
+        <Text key={entry.index} color={color as any} wrap="truncate">
+          <Text bold>{marker}</Text>{entry.text}
+        </Text>
+      );
+    }), [logEntries]);
+
     return (
       <Panel title="Output" focused={focused} subtitle={subtitle}>
         <Box flexDirection="column" flexGrow={1} overflowY="hidden">
@@ -80,20 +97,14 @@ export const BuildOutputPanel: React.FC<{ focused?: boolean; minColumn: number }
           {status === 'running' && logEntries.length === 0 && (
             <LoadingState variant="inline" label="Waiting for output…" />
           )}
-          {visible.map((entry) => (
-            <Text
-              key={entry.index}
-              color={
-                entry.level === 'error' ? theme.color.status.danger
-                : entry.level === 'warning' ? theme.color.status.warning
-                : entry.source === 'stderr' ? theme.color.status.danger
-                : undefined
-              }
-              wrap="truncate"
-            >
-              {entry.text}
-            </Text>
-          ))}
+          {logEntries.length > 0 && (
+            <ScrollPane
+              items={items}
+              scrollOffset={effectiveOffset}
+              visibleHeight={MAX_VISIBLE}
+              showOverflowHints={false}
+            />
+          )}
           {logEntries.length > MAX_VISIBLE && !focused && (
             <Text color={theme.color.text.muted as any} dimColor>Focus output (Tab) to scroll</Text>
           )}

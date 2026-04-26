@@ -32,7 +32,13 @@ export const BuildActionBar: React.FC<Props> = ({ status, result, canBuild, acti
     : theme.color.status.danger;
 
   return (
-    <Box flexDirection="row" flexShrink={0}>
+    <Box flexDirection="row" flexShrink={0} alignItems="center">
+      {/* Focus edge — matches the ▎ marker used on every other focus area */}
+      <Box width={2} flexShrink={0}>
+        <Text bold color={theme.color.focus.ring as any}>
+          {actionFocused ? `${theme.glyphs.focus} ` : '  '}
+        </Text>
+      </Box>
       <Box marginRight={1}>
         <Text inverse={actionFocused} color={actionColor as any} bold>
           {status === 'running'

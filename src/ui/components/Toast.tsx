@@ -14,18 +14,27 @@ interface ToastProps {
 /**
  * Top-right toast stack. Each toast has an optional TTL; when it expires,
  * the toast is auto-dismissed via the store action.
+ *
+ * When more notifications exist than `max`, a "+N more" line surfaces below
+ * the stack so users know they have hidden state.
  */
 export const Toast: React.FC<ToastProps> = ({ width = 56, max = 3 }) => {
   const notifications = useAppStore(s => s.notifications);
-  const visible = notifications.slice(0, max);
+  if (notifications.length === 0) return null;
 
-  if (visible.length === 0) return null;
+  const visible = notifications.slice(0, max);
+  const hidden = Math.max(0, notifications.length - visible.length);
 
   return (
     <Box flexDirection="column" flexShrink={0} alignSelf="flex-end" overflow="hidden">
       {visible.map(notification => (
         <ToastRow key={notification.id} notification={notification} width={width} />
       ))}
+      {hidden > 0 ? (
+        <Text color={theme.color.text.muted as any} dimColor wrap="truncate">
+          +{hidden} more notification{hidden === 1 ? '' : 's'}
+        </Text>
+      ) : null}
     </Box>
   );
 };

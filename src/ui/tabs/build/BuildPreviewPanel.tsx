@@ -10,9 +10,11 @@ interface Props {
   commandPreview: string;
   result: BuildResult | null;
   status: BuildStatus;
+  /** Compact one-line profile summary (config · platform · verbosity · jobs · dev). */
+  profileSummary?: string;
 }
 
-export const BuildPreviewPanel: React.FC<Props> = ({ commandPreview, result, status }) => {
+export const BuildPreviewPanel: React.FC<Props> = ({ commandPreview, result, status, profileSummary }) => {
   const resultColor =
     result?.status === 'success' ? theme.color.status.ok
     : result?.status === 'failure' ? theme.color.status.danger
@@ -23,6 +25,9 @@ export const BuildPreviewPanel: React.FC<Props> = ({ commandPreview, result, sta
 
   return (
     <Box flexDirection="column" flexShrink={0} marginBottom={1} overflow="hidden">
+      {profileSummary ? (
+        <Text color={muted as any} wrap="truncate">Profile: {profileSummary}</Text>
+      ) : null}
       <Text color={muted as any} wrap="truncate">
         Cmd: {commandPreview || 'Select a target to preview the command.'}
       </Text>

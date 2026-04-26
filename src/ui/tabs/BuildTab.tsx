@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Text, useInput, useStdout } from 'ink';
+import { Box, useInput, useStdout } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { useMouseInput } from '../hooks/useMouseInput.js';
 import { PageHeader, EmptyState, KeyHints, TabFrame, type KeyHint } from '../components/index.js';
-import { theme } from '../themes/theme.js';
 import { useBuildTargets } from './build/useBuildTargets.js';
 import { useBuildController } from './build/useBuildController.js';
 import { BuildTargetList } from './build/BuildTargetList.js';
@@ -460,18 +459,17 @@ export const BuildTab: React.FC = () => {
               autoJobs={ctrl.autoJobs}
               hardware={ctrl.hardware}
             />
-          ) : (
-            <Box flexShrink={0} marginTop={1} overflow="hidden">
-              <Text color={theme.color.text.muted as any} wrap="truncate">
-                {settingsSummary}
-              </Text>
-            </Box>
-          )}
+          ) : null}
         </Box>
 
         {/* Right: command preview + result + isolated output panel */}
         <Box flexDirection="column" flexGrow={1} overflowY="hidden" paddingLeft={1}>
-          <BuildPreviewPanel commandPreview={ctrl.commandPreview} result={ctrl.result} status={ctrl.status} />
+          <BuildPreviewPanel
+            commandPreview={ctrl.commandPreview}
+            result={ctrl.result}
+            status={ctrl.status}
+            profileSummary={settingsSummary}
+          />
           <BuildOutputPanel focused={focusArea === 'output'} minColumn={splitColumn + 1} />
         </Box>
       </Box>

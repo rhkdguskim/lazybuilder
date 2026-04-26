@@ -180,12 +180,14 @@ const App: React.FC = () => {
     return () => clearInterval(timer);
   }, [envStatus]);
 
-  const helpItems = [
-    { key: '1-8', label: 'Tab' },
-    { key: '[ ]', label: 'Prev/Next' },
-    { key: '?', label: 'Keys' },
-    { key: 'q', label: 'Quit' },
-  ];
+  const helpItems = showHelp
+    ? [{ key: '?', label: 'Close help' }, { key: 'q', label: 'Quit' }]
+    : [
+        { key: '1-8', label: 'Tab' },
+        { key: '[ ]', label: 'Prev/Next' },
+        { key: '?', label: 'Keys' },
+        { key: 'q', label: 'Quit' },
+      ];
 
 
   const bootCompleted = useAppStore(s => s.bootCompleted);
@@ -228,7 +230,7 @@ const App: React.FC = () => {
 
   return (
     <Box flexDirection="column" width="100%" height={termHeight} overflowY="hidden">
-      {/* Header */}
+      {/* Header — cwd owns the row uncontested */}
       <Box paddingX={1} flexDirection="row" flexShrink={0} overflow="hidden">
         <Box width={12} flexShrink={0}>
           <Text bold color={theme.color.accent.primary as any}>LazyBuilder</Text>
@@ -236,9 +238,11 @@ const App: React.FC = () => {
         <Box flexGrow={1} overflow="hidden">
           <Text color={theme.color.text.muted as any} wrap="truncate">{cwdLabel}</Text>
         </Box>
-        <Box flexShrink={0}>
-          <Toast width={Math.max(40, Math.min(72, termWidth - 14))} />
-        </Box>
+      </Box>
+
+      {/* Toast row — bounded, right-aligned, never crowds the header */}
+      <Box paddingX={1} flexDirection="row" justifyContent="flex-end" flexShrink={0} overflow="hidden">
+        <Toast width={Math.max(24, Math.min(72, termWidth - 2))} />
       </Box>
 
       {/* Tab Bar */}

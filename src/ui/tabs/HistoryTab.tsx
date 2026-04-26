@@ -78,6 +78,7 @@ export const HistoryTab: React.FC = () => {
               <ScrollableList
                 selectedIdx={selectedIdx}
                 maxVisible={18}
+                scrollbar
                 onSelect={setSelectedIdx}
                 items={ordered.map((r, i) => {
                   const severity =
@@ -124,6 +125,7 @@ export const HistoryTab: React.FC = () => {
             <ScrollableList
               selectedIdx={0}
               maxVisible={8}
+              scrollbar
               items={selected && (selected.errors.length > 0 || selected.warnings.length > 0)
                 ? [
                     ...selected.errors.slice(0, 10).map((item, i) => (

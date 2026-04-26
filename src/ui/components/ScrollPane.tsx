@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { theme } from '../themes/theme.js';
-import { legacyWindowsConsole } from '../themes/colors.js';
+import { Scrollbar } from './Scrollbar.js';
 
 interface ScrollPaneProps {
   items: React.ReactNode[];
@@ -12,15 +12,12 @@ interface ScrollPaneProps {
   showOverflowHints?: boolean;
 }
 
-const TRACK_CHAR = legacyWindowsConsole ? '|' : '│';
-const THUMB_CHAR = legacyWindowsConsole ? '#' : '█';
-
 /**
  * Vertical scroll viewport with a lazygit-style scrollbar column.
  *
  * - Shows `items[scrollOffset .. scrollOffset+visibleHeight]`.
- * - When `items.length > visibleHeight`, renders a 1-column track on the right
- *   with a thumb sized proportionally to visible/total ratio.
+ * - When `items.length > visibleHeight`, renders a 1-column track on the
+ *   right (via Scrollbar) plus optional textual ▲/▼ overflow hints.
  * - Caller owns scrollOffset state and key handling.
  */
 export const ScrollPane: React.FC<ScrollPaneProps> = ({
@@ -40,19 +37,6 @@ export const ScrollPane: React.FC<ScrollPaneProps> = ({
   const aboveCount = offset;
   const belowCount = Math.max(0, total - offset - safeHeight);
 
-  // Scrollbar geometry
-  const thumbHeight = overflow
-    ? Math.max(1, Math.round((safeHeight * safeHeight) / total))
-    : safeHeight;
-  const thumbStart = overflow && maxOffset > 0
-    ? Math.round((offset / maxOffset) * (safeHeight - thumbHeight))
-    : 0;
-
-  const trackLines: string[] = [];
-  for (let i = 0; i < safeHeight; i += 1) {
-    trackLines.push(i >= thumbStart && i < thumbStart + thumbHeight ? THUMB_CHAR : TRACK_CHAR);
-  }
-
   return (
     <Box flexDirection="column" overflow="hidden">
       {showOverflowHints && overflow && aboveCount > 0 ? (
@@ -67,17 +51,7 @@ export const ScrollPane: React.FC<ScrollPaneProps> = ({
           ))}
         </Box>
         {showScrollbar && overflow ? (
-          <Box flexDirection="column" flexShrink={0} marginLeft={1}>
-            {trackLines.map((char, i) => (
-              <Text
-                key={i}
-                color={(char === THUMB_CHAR ? theme.color.accent.primary : theme.color.text.muted) as any}
-                dimColor={char !== THUMB_CHAR}
-              >
-                {char}
-              </Text>
-            ))}
-          </Box>
+          <Scrollbar total={total} offset={offset} height={safeHeight} />
         ) : null}
       </Box>
       {showOverflowHints && overflow && belowCount > 0 ? (
