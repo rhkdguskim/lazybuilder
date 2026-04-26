@@ -371,9 +371,10 @@ function sourceFor(kind: ToolchainRequirement['kind']): { url: string; signer: s
       channel: 'workload',
     };
   }
-  return {
-    url: 'https://dot.net/v1/dotnet-install.ps1',
-    signer: 'Microsoft',
-    channel: 'official',
-  };
+  // Source URL must reflect the actual platform-specific script we'll fetch.
+  // Keeps headless plan output honest (and verifiable via curl).
+  const url = process.platform === 'win32'
+    ? 'https://dot.net/v1/dotnet-install.ps1'
+    : 'https://dot.net/v1/dotnet-install.sh';
+  return { url, signer: 'Microsoft', channel: 'official' };
 }

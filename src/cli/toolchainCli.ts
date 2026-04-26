@@ -15,7 +15,10 @@ export interface ToolchainCliOptions {
 }
 
 function envelope(kind: string, data: unknown): string {
-  return JSON.stringify({ schema: SCHEMA, kind, data });
+  const payload = { schema: SCHEMA, kind, data };
+  return process.env['LAZYBUILDER_PRETTY'] === '1'
+    ? JSON.stringify(payload, null, 2)
+    : JSON.stringify(payload);
 }
 
 function parseFlags(argv: string[]): ToolchainCliOptions {

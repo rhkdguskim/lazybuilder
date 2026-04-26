@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdirSync, existsSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, existsSync, statSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { ProcessRunner } from '../process/ProcessRunner.js';
@@ -12,7 +12,10 @@ import type {
 const log = logger.child({ component: 'DotnetInstaller' });
 
 const DOTNET_INSTALL_PS1_URL = 'https://dot.net/v1/dotnet-install.ps1';
+const DOTNET_INSTALL_SH_URL = 'https://dot.net/v1/dotnet-install.sh';
 const SCRIPT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const IS_WINDOWS = process.platform === 'win32';
 
 export interface InstallerEvent {
   stepId: string;
@@ -27,41 +30,64 @@ export interface InstallerRunOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Downloads and runs Microsoft's official dotnet-install script.
+ * - Windows: dotnet-install.ps1 via powershell
+ * - macOS / Linux: dotnet-install.sh via bash
+ *
+ * The two scripts accept different flag syntax (PowerShell uses `-Channel`,
+ * the shell script uses `--channel`). Plan/preview output reflects the
+ * platform-specific command so the JSON contract is honest about what will
+ * actually run.
+ */
 export class DotnetInstaller extends EventEmitter {
   private readonly cacheDir: string;
   private readonly scriptPath: string;
+  private readonly scriptUrl: string;
+  private readonly executable: string;
 
   constructor() {
     super();
     this.cacheDir = join(homedir(), '.lazybuilder', 'cache');
-    this.scriptPath = join(this.cacheDir, 'dotnet-install.ps1');
+    if (IS_WINDOWS) {
+      this.scriptPath = join(this.cacheDir, 'dotnet-install.ps1');
+      this.scriptUrl = DOTNET_INSTALL_PS1_URL;
+      this.executable = 'powershell';
+    } else {
+      this.scriptPath = join(this.cacheDir, 'dotnet-install.sh');
+      this.scriptUrl = DOTNET_INSTALL_SH_URL;
+      this.executable = 'bash';
+    }
   }
 
   resolveInstallDir(scope: InstallScope): string {
     if (scope === 'machine') {
-      return join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'dotnet');
+      if (IS_WINDOWS) {
+        return join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'dotnet');
+      }
+      return '/usr/local/share/dotnet';
     }
     return join(homedir(), '.dotnet');
   }
 
   async ensureScript(): Promise<string> {
-    if (process.platform !== 'win32') {
-      throw new Error('DotnetInstaller MVP supports Windows only');
-    }
-
     if (!existsSync(this.cacheDir)) {
       mkdirSync(this.cacheDir, { recursive: true });
     }
 
-    const fresh = this.isScriptFresh();
-    if (fresh) {
-      log.debug('using cached dotnet-install.ps1', { path: this.scriptPath });
+    if (this.isScriptFresh()) {
+      log.debug('using cached dotnet-install script', { path: this.scriptPath });
       return this.scriptPath;
     }
 
-    log.info('fetching dotnet-install.ps1', { url: DOTNET_INSTALL_PS1_URL });
+    log.info('fetching dotnet-install script', { url: this.scriptUrl });
     const body = await this.fetchScript();
     writeFileSync(this.scriptPath, body, 'utf-8');
+    if (!IS_WINDOWS) {
+      // Shell script must be executable for `bash <path>` to work cleanly,
+      // and for callers that want to spawn it directly.
+      try { chmodSync(this.scriptPath, 0o755); } catch { /* best-effort */ }
+    }
     return this.scriptPath;
   }
 
@@ -125,7 +151,7 @@ export class DotnetInstaller extends EventEmitter {
       });
 
       runner.start({
-        command: 'powershell',
+        command: this.executable,
         args,
         shell: false,
         forceUtf8: false,
@@ -142,36 +168,48 @@ export class DotnetInstaller extends EventEmitter {
     }
     const installDir = this.resolveInstallDir(step.scope);
     const args = this.buildArgs(step, this.scriptPath, installDir);
-    return { executable: 'powershell', args };
+    return { executable: this.executable, args };
   }
 
   private buildArgs(step: InstallStep, scriptPath: string, installDir: string): string[] {
     if (step.kind === 'dotnet-workload') {
+      if (IS_WINDOWS) {
+        return ['-NoProfile', '-Command', `dotnet workload install ${step.version}`];
+      }
+      return ['-c', `dotnet workload install ${step.version}`];
+    }
+
+    if (IS_WINDOWS) {
+      const versionArg = step.version.endsWith('.x')
+        ? ['-Channel', step.version.slice(0, -2)]
+        : ['-Version', step.version];
+      const runtimeArg = step.kind === 'dotnet-runtime' ? ['-Runtime', 'dotnet'] : [];
       return [
         '-NoProfile',
-        '-Command',
-        `dotnet workload install ${step.version}`,
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        ...versionArg,
+        ...runtimeArg,
+        '-InstallDir',
+        installDir,
+        '-NoPath',
       ];
     }
 
+    // POSIX: dotnet-install.sh uses long-form flags.
     const versionArg = step.version.endsWith('.x')
-      ? ['-Channel', step.version.slice(0, -2)]
-      : ['-Version', step.version];
-
-    const runtimeArg =
-      step.kind === 'dotnet-runtime' ? ['-Runtime', 'dotnet'] : [];
-
+      ? ['--channel', step.version.slice(0, -2)]
+      : ['--version', step.version];
+    const runtimeArg = step.kind === 'dotnet-runtime' ? ['--runtime', 'dotnet'] : [];
     return [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
       scriptPath,
       ...versionArg,
       ...runtimeArg,
-      '-InstallDir',
+      '--install-dir',
       installDir,
-      '-NoPath',
+      '--no-path',
     ];
   }
 
@@ -187,17 +225,16 @@ export class DotnetInstaller extends EventEmitter {
   }
 
   private async fetchScript(): Promise<string> {
-    const response = await fetch(DOTNET_INSTALL_PS1_URL, {
-      redirect: 'follow',
-    });
+    const response = await fetch(this.scriptUrl, { redirect: 'follow' });
     if (!response.ok) {
       throw new Error(
-        `Failed to download dotnet-install.ps1: HTTP ${response.status}`,
+        `Failed to download ${this.scriptUrl}: HTTP ${response.status}`,
       );
     }
     const body = await response.text();
+    // Sanity-check: PS1 mentions Install-Dotnet; SH mentions dotnet-install.
     if (!body.includes('dotnet-install') && !body.includes('Install-Dotnet')) {
-      throw new Error('Downloaded dotnet-install.ps1 failed sanity check');
+      throw new Error(`Downloaded ${this.scriptUrl} failed sanity check`);
     }
     return body;
   }

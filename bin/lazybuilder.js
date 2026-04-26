@@ -11,8 +11,36 @@ const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
 const args = process.argv.slice(2);
 const first = args[0];
 
+// --pretty: indent JSON envelope output for human reading. Both the bin
+// itself (envelope helper below) and every downstream CLI module (which
+// reads LAZYBUILDER_PRETTY directly) honor this.
+const PRETTY = args.includes('--pretty');
+if (PRETTY) {
+  process.env['LAZYBUILDER_PRETTY'] = '1';
+}
+
 const SCHEMA = 'lazybuilder/v1';
-const envelope = (kind, data) => JSON.stringify({ schema: SCHEMA, kind, data });
+const envelope = (kind, data) => {
+  const env = { schema: SCHEMA, kind, data };
+  return PRETTY ? JSON.stringify(env, null, 2) : JSON.stringify(env);
+};
+
+// Known top-level forms — used to error fast on typos like `--foo`.
+const KNOWN_SUBCOMMANDS = new Set([
+  '--version', '-v', '-V',
+  '--help', '-h',
+  '--check-update', 'check-update',
+  '--update', 'update',
+  '--toolchain-plan',
+  '--toolchain-apply',
+  '--toolchain-sync',
+  '--toolchain-doctor',
+  '--regressions',
+  '--flaky',
+  '--metrics-export',
+  'mcp',
+  'lsp',
+]);
 
 const distMain = resolve(here, '..', 'dist', 'main.js');
 const distUpdater = resolve(here, '..', 'dist', 'infrastructure', 'updater', 'UpdateChecker.js');
@@ -68,6 +96,10 @@ Build Intelligence options:
   --project=<id>         Filter by project ID
   --format=ndjson|json   Export format (default ndjson)
   --since=ISO8601        Export since timestamp
+
+Output:
+  --pretty               Indent JSON output for human reading
+                         (envelope shape stays identical for agents)
 
 Headless agent docs:
   https://github.com/rhkdguskim/lazybuilder/blob/master/agent.md
@@ -214,6 +246,15 @@ try {
 } catch (err) {
   console.error('[lazybuilder]', err?.message ?? err);
   process.exit(1);
+}
+
+// Reject unknown leading flags before opening the alternate screen.
+// Without this, `lazybuilder --foo` silently launches the TUI, so users never
+// learn they made a typo until the help text disagrees with reality.
+if (first && first.startsWith('-') && !KNOWN_SUBCOMMANDS.has(first)) {
+  console.error(`[lazybuilder] unknown option: ${first}`);
+  console.error(`[lazybuilder] run "lazybuilder --help" for the list of headless commands.`);
+  process.exit(2);
 }
 
 // Fallthrough → TUI

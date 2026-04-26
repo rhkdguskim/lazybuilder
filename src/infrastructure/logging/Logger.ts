@@ -49,6 +49,18 @@ interface LoggerConfig {
 
 let cachedConfig: LoggerConfig | null = null;
 
+function isUnderTest(): boolean {
+  // Vitest sets VITEST=true, jest sets JEST_WORKER_ID. NODE_ENV=test is the
+  // generic signal. Any of these means we should NOT pollute the user's
+  // persistent log file with test-induced errors.
+  return (
+    process.env['VITEST'] === 'true'
+    || process.env['VITEST_WORKER_ID'] != null
+    || process.env['JEST_WORKER_ID'] != null
+    || process.env['NODE_ENV'] === 'test'
+  );
+}
+
 function resolveConfig(): LoggerConfig {
   if (cachedConfig) return cachedConfig;
 
@@ -60,6 +72,11 @@ function resolveConfig(): LoggerConfig {
     const explicit = process.env['LAZYBUILDER_LOG_FILE'];
     if (explicit) {
       filePath = explicit;
+    } else if (isUnderTest()) {
+      // Tests intentionally trigger expected failures (EACCES, JSON parse,
+      // "disk full") and would otherwise spam the user's real log file.
+      // Drop on the floor unless an explicit override file is set.
+      filePath = null;
     } else {
       const dir = join(homedir(), '.lazybuilder', 'logs');
       try {
