@@ -12,6 +12,8 @@ import {
   ProposedFeatures,
   TextDocuments,
   TextDocumentSyncKind,
+  CodeActionKind,
+  ResponseError,
   type InitializeParams,
   type InitializeResult,
 } from 'vscode-languageserver/node.js';
@@ -20,6 +22,11 @@ import { logger, errToLog } from '../infrastructure/logging/Logger.js';
 import { LspWorkspace, uriToFsPath } from './workspace.js';
 import { computeDiagnostics } from './providers/diagnosticProvider.js';
 import { computeHover } from './providers/hoverProvider.js';
+import { computeCodeActions } from './providers/codeActionProvider.js';
+import {
+  executeToolchainApply,
+  type ToolchainApplyArgs,
+} from './commands/toolchainApplyCommand.js';
 
 const log = logger.child({ component: 'lsp/server' });
 
@@ -45,6 +52,12 @@ export function runStdioServer(): void {
         diagnosticProvider: {
           interFileDependencies: false,
           workspaceDiagnostics: false,
+        },
+        codeActionProvider: {
+          codeActionKinds: [CodeActionKind.QuickFix],
+        },
+        executeCommandProvider: {
+          commands: ['lazybuilder.toolchain.apply'],
         },
       },
     };
@@ -110,6 +123,73 @@ export function runStdioServer(): void {
     } catch (err) {
       log.warn('pull diagnostics failed', { uri: doc.uri, ...errToLog(err) });
       return { kind: 'full' as const, items: [] };
+    }
+  });
+
+  // Code actions (Phase C-3 — quick-fix for missing SDK diagnostics).
+  connection.onCodeAction(async (params) => {
+    const doc = documents.get(params.textDocument.uri);
+    if (!doc) return [];
+    try {
+      const root = workspace.resolveRootForUri(doc.uri);
+      const ctx = await workspace.getContext(root);
+      return computeCodeActions(
+        doc.uri,
+        doc.getText(),
+        params.range,
+        { ...ctx, diagnostics: params.context.diagnostics },
+        params.context.only ?? [],
+      );
+    } catch (err) {
+      log.warn('codeAction failed', { uri: doc.uri, ...errToLog(err) });
+      return [];
+    }
+  });
+
+  // executeCommand: lazybuilder.toolchain.apply
+  // Concurrent execution guard — one in-flight install at a time.
+  let applyInFlight = false;
+  async function refreshAllDiagnostics(): Promise<void> {
+    workspace.invalidateAll();
+    for (const doc of documents.all()) {
+      await publishDiagnostics(doc);
+    }
+  }
+
+  connection.onExecuteCommand(async (params) => {
+    if (params.command !== 'lazybuilder.toolchain.apply') {
+      return new ResponseError(1, `Unknown command: ${params.command}`);
+    }
+    if (applyInFlight) {
+      return new ResponseError(2, 'Another toolchain apply is already in progress.');
+    }
+    const args = (params.arguments?.[0] ?? {}) as ToolchainApplyArgs;
+    if (!args.stepIds || args.stepIds.length === 0) {
+      return new ResponseError(3, 'stepIds is required.');
+    }
+    applyInFlight = true;
+    const reporter = await connection.window.createWorkDoneProgress();
+    reporter.begin('Installing toolchain', 0, '', true);
+    try {
+      const root = workspace.resolveRootForUri(args.sourceUri ?? '');
+      const ctx = await workspace.getContext(root);
+      const result = await executeToolchainApply(
+        args,
+        ctx,
+        (report) => reporter.report(report.percentage, report.message),
+        refreshAllDiagnostics,
+      );
+      reporter.done();
+      return result;
+    } catch (err) {
+      log.warn('executeCommand failed', errToLog(err));
+      reporter.done();
+      return new ResponseError(
+        4,
+        err instanceof Error ? err.message : String(err),
+      );
+    } finally {
+      applyInFlight = false;
     }
   });
 

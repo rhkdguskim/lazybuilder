@@ -23,6 +23,49 @@ export function makeCsproj(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
   };
 }
 
+export function makeVcxproj(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
+  return {
+    name: 'NativeApp',
+    filePath: '/proj/NativeApp.vcxproj',
+    projectType: 'cpp-msbuild',
+    language: 'cpp',
+    buildSystem: 'msbuild',
+    targetFrameworks: [],
+    platformTargets: ['x64'],
+    configurations: [
+      { configuration: 'Debug', platform: 'x64' },
+      { configuration: 'Release', platform: 'x64' },
+    ],
+    platformToolset: 'v143',
+    windowsSdkVersion: '10.0.22621.0',
+    recommendedCommand: 'msbuild NativeApp.vcxproj',
+    dependencies: [],
+    riskFlags: [],
+    solutionPath: null,
+    ...overrides,
+  };
+}
+
+export function makeCMakeProject(overrides: Partial<ProjectInfo> = {}): ProjectInfo {
+  return {
+    name: 'cmake-proj',
+    filePath: '/proj/CMakeLists.txt',
+    projectType: 'cmake',
+    language: 'cpp',
+    buildSystem: 'cmake',
+    targetFrameworks: [],
+    platformTargets: [],
+    configurations: [],
+    platformToolset: null,
+    windowsSdkVersion: null,
+    recommendedCommand: 'cmake --build build',
+    dependencies: [],
+    riskFlags: [],
+    solutionPath: null,
+    ...overrides,
+  };
+}
+
 export const SAMPLE_CSPROJ_NET8 = `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

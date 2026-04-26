@@ -27,11 +27,19 @@ export function resolveToolchainRequirements(
   projects: ProjectInfo[],
 ): ToolchainRequirement[] {
   const drafts = new Map<string, RequirementDraft>();
+  const recommended = new Set<string>();
   const dotnetProjects = projects.filter(
     p => p.projectType === 'dotnet-sdk' || p.projectType === 'dotnet-legacy',
   );
+  const cppProjects = projects.filter(p => p.projectType === 'cpp-msbuild');
+  const cmakeProjects = projects.filter(p => p.projectType === 'cmake');
 
-  if (dotnetProjects.length === 0 && !snapshot.dotnet.globalJsonPath) {
+  if (
+    dotnetProjects.length === 0 &&
+    cppProjects.length === 0 &&
+    cmakeProjects.length === 0 &&
+    !snapshot.dotnet.globalJsonPath
+  ) {
     return [];
   }
 
@@ -72,7 +80,52 @@ export function resolveToolchainRequirements(
     }
   }
 
-  return [...drafts.values()].map(draft => buildRequirement(draft, snapshot));
+  for (const project of cppProjects) {
+    if (project.platformToolset) {
+      addDraft(drafts, 'msvc-toolset', project.platformToolset, {
+        source: 'csproj',
+        filePath: project.filePath,
+        detail: `PlatformToolset=${project.platformToolset}`,
+        affectedProjects: [project.name],
+      });
+    }
+    if (project.windowsSdkVersion) {
+      addDraft(drafts, 'windows-sdk', project.windowsSdkVersion, {
+        source: 'csproj',
+        filePath: project.filePath,
+        detail: `WindowsTargetPlatformVersion=${project.windowsSdkVersion}`,
+        affectedProjects: [project.name],
+      });
+    }
+  }
+
+  for (const project of cmakeProjects) {
+    const cmakeSpec = extractCmakeMinimumSpec(project) ?? '>=3.20';
+    addDraft(drafts, 'cmake', cmakeSpec, {
+      source: 'inferred',
+      filePath: project.filePath,
+      detail: `cmake_minimum_required ${cmakeSpec}`,
+      affectedProjects: [project.name],
+    });
+    // Ninja is a recommended generator for CMake projects.
+    addDraft(drafts, 'ninja', 'latest', {
+      source: 'inferred',
+      filePath: project.filePath,
+      detail: 'recommended generator for CMake',
+      affectedProjects: [project.name],
+    });
+    recommended.add(`ninja::latest`);
+  }
+
+  return [...drafts.values()].map(draft => buildRequirement(draft, snapshot, recommended));
+}
+
+function extractCmakeMinimumSpec(project: ProjectInfo): string | null {
+  for (const flag of project.riskFlags) {
+    const m = flag.match(/^cmake\s*>=\s*(\d+(?:\.\d+){0,2})/i);
+    if (m) return `>=${m[1]}`;
+  }
+  return null;
 }
 
 function addDraft(
@@ -93,10 +146,12 @@ function addDraft(
 function buildRequirement(
   draft: RequirementDraft,
   snapshot: EnvironmentSnapshot,
+  recommended: Set<string>,
 ): ToolchainRequirement {
   const id = `${draft.kind}-${draft.versionSpec}`;
   const merged = mergeReasons(draft.reasons);
   const installed = isCurrentlyInstalled(draft.kind, draft.versionSpec, snapshot);
+  const key = `${draft.kind}::${draft.versionSpec}`;
 
   return {
     id,
@@ -105,7 +160,7 @@ function buildRequirement(
     resolvedVersion: resolveExactVersion(draft.kind, draft.versionSpec, snapshot),
     reason: merged,
     currentlyInstalled: installed,
-    severity: 'required',
+    severity: recommended.has(key) ? 'recommended' : 'required',
   };
 }
 
@@ -158,6 +213,30 @@ function isCurrentlyInstalled(
   if (kind === 'dotnet-workload') {
     return snapshot.dotnet.workloads.includes(versionSpec);
   }
+  if (kind === 'msvc-toolset') {
+    const spec = versionSpec.toLowerCase();
+    return snapshot.cpp.toolsets.some(t => {
+      const v = t.version.toLowerCase();
+      return v.includes(spec) || spec.includes(v);
+    });
+  }
+  if (kind === 'windows-sdk') {
+    return snapshot.windowsSdk.versions.some(s => {
+      if (s.version === versionSpec) return true;
+      const lastDot = versionSpec.lastIndexOf('.');
+      if (lastDot > 0) {
+        const prefix = versionSpec.slice(0, lastDot);
+        return s.version.startsWith(prefix);
+      }
+      return false;
+    });
+  }
+  if (kind === 'cmake') {
+    return snapshot.cmake?.detected === true;
+  }
+  if (kind === 'ninja') {
+    return snapshot.ninja?.detected === true;
+  }
   return false;
 }
 
@@ -166,6 +245,9 @@ function resolveExactVersion(
   versionSpec: string,
   snapshot: EnvironmentSnapshot,
 ): string | null {
+  if (kind === 'msvc-toolset' || kind === 'windows-sdk' || kind === 'cmake' || kind === 'ninja') {
+    return versionSpec;
+  }
   if (kind !== 'dotnet-sdk') return null;
   if (!versionSpec.endsWith('.x')) return versionSpec;
 

@@ -2,6 +2,7 @@ import type { EnvironmentSnapshot } from '../domain/models/EnvironmentSnapshot.j
 import type { ProjectInfo } from '../domain/models/ProjectInfo.js';
 import type {
   ToolchainRequirement,
+  ToolchainKind,
 } from '../domain/models/ToolchainRequirement.js';
 import type {
   InstallPlan,
@@ -18,6 +19,8 @@ import { dirname } from 'node:path';
 import { resolveToolchainRequirements } from '../domain/rules/toolchainRules.js';
 import {
   DotnetInstaller,
+  VsBuildToolsInstaller,
+  WingetInstaller,
   ensureUserPathContains,
   updateGlobalJsonSdkVersion,
 } from '../infrastructure/installer/index.js';
@@ -42,10 +45,40 @@ export interface ApplyOptions {
 const SDK_SIZE_HINT_BYTES = 280 * 1024 * 1024;
 const RUNTIME_SIZE_HINT_BYTES = 80 * 1024 * 1024;
 const WORKLOAD_SIZE_HINT_BYTES = 120 * 1024 * 1024;
+const MSVC_TOOLSET_SIZE_HINT_BYTES = 1700 * 1024 * 1024; // ~1.7 GB
+const WINDOWS_SDK_SIZE_HINT_BYTES = 340 * 1024 * 1024;
+const CMAKE_SIZE_HINT_BYTES = 32 * 1024 * 1024;
+const NINJA_SIZE_HINT_BYTES = 1 * 1024 * 1024;
 const STEP_TIME_HINT_SECONDS = 60;
+
+interface InstallerLike {
+  buildPreviewArgs(step: InstallStep): { executable: string; args: string[] };
+  run(options: { step: InstallStep; signal?: AbortSignal }): Promise<{ exitCode: number; logTail: string[] }>;
+}
 
 export class ToolchainService {
   private installer = new DotnetInstaller();
+  private vsBuildToolsInstaller = new VsBuildToolsInstaller();
+  private wingetInstaller = new WingetInstaller();
+
+  private getInstallerForStep(step: InstallStep): InstallerLike {
+    switch (step.kind) {
+      case 'dotnet-sdk':
+      case 'dotnet-runtime':
+      case 'dotnet-workload':
+        return this.installer;
+      case 'msvc-toolset':
+        return this.vsBuildToolsInstaller;
+      case 'windows-sdk':
+      case 'cmake':
+      case 'ninja':
+        return this.wingetInstaller;
+      default: {
+        const exhaustive: never = step.kind;
+        throw new Error(`No installer registered for kind ${exhaustive as string}`);
+      }
+    }
+  }
 
   /**
    * Compute requirements + plan from a current snapshot and project list.
@@ -126,7 +159,8 @@ export class ToolchainService {
       emit();
 
       try {
-        const result = await this.installer.run({
+        const installer = this.getInstallerForStep(step);
+        const result = await installer.run({
           step,
           signal: options.signal,
         });
@@ -258,13 +292,15 @@ export class ToolchainService {
   private toStep(req: ToolchainRequirement, scope: InstallScope): InstallStep {
     const version = req.resolvedVersion ?? req.versionSpec;
     const sizeBytes = sizeHintForKind(req.kind);
-    const needsAdmin = scope === 'machine';
-    const preview = this.installer.buildPreviewArgs({
+    const effectiveScope = effectiveScopeForKind(req.kind, scope);
+    const needsAdmin = effectiveScope === 'machine';
+
+    const skeleton: InstallStep = {
       id: req.id,
       displayName: '',
       kind: req.kind,
       version,
-      scope,
+      scope: effectiveScope,
       needsAdmin,
       sizeBytes: null,
       estimatedSeconds: null,
@@ -273,14 +309,16 @@ export class ToolchainService {
       dependsOn: [],
       selected: false,
       reason: req.reason,
-    });
+    };
+    const installer = this.getInstallerForStep(skeleton);
+    const preview = installer.buildPreviewArgs(skeleton);
 
     return {
       id: req.id,
       displayName: displayNameFor(req.kind, version),
       kind: req.kind,
       version,
-      scope,
+      scope: effectiveScope,
       needsAdmin,
       sizeBytes,
       estimatedSeconds: STEP_TIME_HINT_SECONDS,
@@ -351,24 +389,72 @@ function cloneProgress(progress: InstallProgress): InstallProgress {
   };
 }
 
-function sizeHintForKind(kind: ToolchainRequirement['kind']): number {
-  if (kind === 'dotnet-sdk') return SDK_SIZE_HINT_BYTES;
-  if (kind === 'dotnet-runtime') return RUNTIME_SIZE_HINT_BYTES;
-  return WORKLOAD_SIZE_HINT_BYTES;
+function sizeHintForKind(kind: ToolchainKind): number {
+  switch (kind) {
+    case 'dotnet-sdk': return SDK_SIZE_HINT_BYTES;
+    case 'dotnet-runtime': return RUNTIME_SIZE_HINT_BYTES;
+    case 'dotnet-workload': return WORKLOAD_SIZE_HINT_BYTES;
+    case 'msvc-toolset': return MSVC_TOOLSET_SIZE_HINT_BYTES;
+    case 'windows-sdk': return WINDOWS_SDK_SIZE_HINT_BYTES;
+    case 'cmake': return CMAKE_SIZE_HINT_BYTES;
+    case 'ninja': return NINJA_SIZE_HINT_BYTES;
+    default: {
+      const exhaustive: never = kind;
+      return (void exhaustive, WORKLOAD_SIZE_HINT_BYTES);
+    }
+  }
 }
 
-function displayNameFor(kind: ToolchainRequirement['kind'], version: string): string {
-  if (kind === 'dotnet-sdk') return `.NET SDK ${version}`;
-  if (kind === 'dotnet-runtime') return `.NET Runtime ${version}`;
-  return `Workload: ${version}`;
+function displayNameFor(kind: ToolchainKind, version: string): string {
+  switch (kind) {
+    case 'dotnet-sdk': return `.NET SDK ${version}`;
+    case 'dotnet-runtime': return `.NET Runtime ${version}`;
+    case 'dotnet-workload': return `Workload: ${version}`;
+    case 'msvc-toolset': return `VS Build Tools ${version}`;
+    case 'windows-sdk': return `Windows SDK ${version}`;
+    case 'cmake': return `CMake ${version}`;
+    case 'ninja': return `Ninja ${version}`;
+    default: {
+      const exhaustive: never = kind;
+      return (void exhaustive, `Toolchain ${version}`);
+    }
+  }
 }
 
-function sourceFor(kind: ToolchainRequirement['kind']): { url: string; signer: string; channel: string } {
+function sourceFor(kind: ToolchainKind): { url: string; signer: string; channel: string } {
   if (kind === 'dotnet-workload') {
     return {
       url: 'dotnet workload',
       signer: 'Microsoft',
       channel: 'workload',
+    };
+  }
+  if (kind === 'msvc-toolset') {
+    return {
+      url: 'https://aka.ms/vs/17/release/vs_BuildTools.exe',
+      signer: 'Microsoft',
+      channel: 'BuildTools',
+    };
+  }
+  if (kind === 'windows-sdk') {
+    return {
+      url: 'winget://Microsoft.WindowsSDK',
+      signer: 'Microsoft',
+      channel: 'winget',
+    };
+  }
+  if (kind === 'cmake') {
+    return {
+      url: 'winget://Kitware.CMake',
+      signer: 'Kitware',
+      channel: 'winget',
+    };
+  }
+  if (kind === 'ninja') {
+    return {
+      url: 'winget://Ninja-build.Ninja',
+      signer: 'Ninja project',
+      channel: 'winget',
     };
   }
   // Source URL must reflect the actual platform-specific script we'll fetch.
@@ -377,4 +463,14 @@ function sourceFor(kind: ToolchainRequirement['kind']): { url: string; signer: s
     ? 'https://dot.net/v1/dotnet-install.ps1'
     : 'https://dot.net/v1/dotnet-install.sh';
   return { url, signer: 'Microsoft', channel: 'official' };
+}
+
+/**
+ * VS Build Tools and Windows SDK only support machine-scope installs, so we
+ * upgrade the scope automatically when those kinds are requested. CMake /
+ * Ninja stay at user scope by default (winget user-scope works for both).
+ */
+function effectiveScopeForKind(kind: ToolchainKind, requested: InstallScope): InstallScope {
+  if (kind === 'msvc-toolset' || kind === 'windows-sdk') return 'machine';
+  return requested;
 }

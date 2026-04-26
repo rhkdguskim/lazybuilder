@@ -4,6 +4,7 @@ import { diagnosticsTools } from './diagnostics.js';
 import { toolchainTools } from './toolchain.js';
 import { buildTools } from './build.js';
 import { metricsTools } from './metrics.js';
+import { debugTools } from './debug.js';
 
 export const allTools: McpTool[] = [
   ...scanTools,
@@ -11,4 +12,5 @@ export const allTools: McpTool[] = [
   ...toolchainTools,
   ...buildTools,
   ...metricsTools,
+  ...debugTools,
 ];

@@ -23,8 +23,9 @@ lazybuilder --toolchain-doctor    # ✅ JSON envelope `ToolchainDoctor`, exits 0
 lazybuilder --regressions         # ✅ JSON envelope `BuildIntelligenceReport` (regressions only)
 lazybuilder --flaky               # ✅ JSON envelope `BuildIntelligenceReport` (flaky only)
 lazybuilder --metrics-export      # ✅ NDJSON or JSON envelope `BuildMetrics`
-lazybuilder mcp                   # ✅ stdio MCP server for AI agents
-lazybuilder lsp                   # ✅ stdio LSP server for editors
+lazybuilder mcp                   # ✅ stdio MCP server for AI agents (now 16 tools)
+lazybuilder lsp                   # ✅ stdio LSP server (now with codeAction + executeCommand)
+lazybuilder debug start <proj>    # ✅ one-shot netcoredbg session, JSON envelope `DebugRun`
 lazybuilder --help <subcommand>   # 🚧 prints subcommand help
 ```
 
@@ -359,21 +360,82 @@ See [`features/mcp-server.md`](../features/mcp-server.md) for tool input schemas
 
 ---
 
-## 5e. LSP Server (Phase C-1)
+## 5e. LSP Server (Phase C-1 + C-3)
 
 ```bash
 lazybuilder lsp
 ```
 
-Stdio Language Server Protocol server. Phase C-1 capabilities:
+Stdio Language Server Protocol server. Capabilities:
 
-- `textDocument/diagnostic` (push + pull) for `.csproj`, `.fsproj`, `.vbproj`, `global.json`
+**Phase C-1**:
+- `textDocument/diagnostic` (push + pull) for `.csproj`, `.fsproj`, `.vbproj`, `.vcxproj`, `global.json`
 - `textDocument/hover` for `<TargetFramework>`, `<PlatformToolset>`, `<WindowsTargetPlatformVersion>`, global.json `version`/`rollForward`
 - 5-minute per-folder context cache; `workspace/didChangeConfiguration` invalidates cache
 
-VS Code (extension) / Neovim (lspconfig) / Helix examples in [`features/lsp-server.md`](../features/lsp-server.md).
+**Phase C-3 ★ shipped this cycle**:
+- `textDocument/codeAction` (`CodeActionKind.QuickFix`) for `DIAG003` (missing TFM SDK) and `DIAG002` (global.json mismatch)
+- `workspace/executeCommand`: `lazybuilder.toolchain.apply` — invokes `ToolchainService.apply()` with selected `stepIds`
+- `$/progress` notifications during install (begin/report/end)
+- Auto re-publish diagnostics after install completes
+- Concurrent execution guard: second `executeCommand` while one is in-flight returns `ResponseError(code=2)`
+
+Quick-fix flow:
+1. Editor opens `.csproj` with `net8.0` and no .NET 8 SDK → diagnostic with code `DIAG003`
+2. User clicks 💡 → editor calls `textDocument/codeAction` → server returns `Install .NET 8 SDK (no admin, ~280 MB)`
+3. User clicks fix → editor calls `workspace/executeCommand: lazybuilder.toolchain.apply` with `{ stepIds: ['dotnet-sdk-8.0.x'] }`
+4. Server runs Toolchain Resolver, streams progress, refreshes diagnostics on completion
+
+VS Code (extension) / Neovim (lspconfig) / Helix examples in [`features/lsp-server.md`](../features/lsp-server.md). codeAction details in [`features/lsp-codeaction.md`](../features/lsp-codeaction.md).
 
 stdout is reserved for LSP RPC. Logs go to file.
+
+---
+
+## 5f. Debugger (Phase D-1 MVP)
+
+```bash
+lazybuilder debug start <projectPath> [--config=Debug] [--args="..."]
+```
+
+**One-shot lifecycle**: start → wait for stopped/terminated → snapshot if stopped → terminate. Two JSON envelopes printed: `DebugSession` (with sessionId), then `DebugRun` (final result + snapshot).
+
+For **multi-step workflows** (multiple breakpoints, step, evaluate, observe), use the MCP `debug.*` tools — they keep the session alive between calls.
+
+**Requirements**:
+- `netcoredbg` on PATH or at `~/.lazybuilder/cache/netcoredbg/netcoredbg(.exe)`
+- Project must be already built — artifacts at `bin/<config>/<tfm>/<projectName>.dll`
+- portable PDB next to the dll (default for .NET SDK projects)
+
+**MCP `debug.*` tools** (9, registered automatically when running `lazybuilder mcp`):
+- `debug.start({ project, configuration?, args?, env? })` → `{ sessionId }`
+- `debug.set_breakpoint({ sessionId, file, line, condition? })` → `{ breakpointId }`
+- `debug.continue` / `debug.step_over` / `debug.step_in` / `debug.step_out` / `debug.pause`
+- `debug.evaluate({ sessionId, expression, frameId? })` → `{ value, type? }`
+- `debug.snapshot({ sessionId, maxStackFrames?, maxLocalsPerFrame?, sourceContextLines? })` → AI-friendly state payload (stack + locals + source snippet) in one call
+- `debug.terminate({ sessionId })` → `{ ok }`
+
+Session is single-instance (second `start` is rejected). MCP and CLI share the same in-process service.
+
+See [`features/debugger-d1-mvp.md`](../features/debugger-d1-mvp.md) for MVP scope, [`features/debugger.md`](../features/debugger.md) for the full multi-phase vision (D-2 AI primitives, D-3 vsdbg/cppvsdbg/gdb/lldb).
+
+---
+
+## 5g. Toolchain Resolver Phase 2 (C++)
+
+The `--toolchain-*` and `toolchain_*` MCP tools transparently support new toolchain kinds beyond .NET:
+
+| Kind | Trigger source | Installer | Scope | UAC |
+|---|---|---|---|---|
+| `dotnet-sdk` / `dotnet-runtime` / `dotnet-workload` | global.json + csproj TFM | dotnet-install.ps1 | user | ✗ |
+| `msvc-toolset` (★ NEW) | `.vcxproj` `<PlatformToolset>` | `vs_BuildTools.exe` (with `Microsoft.VisualStudio.Workload.VCTools`) | machine | ✓ (1×) |
+| `windows-sdk` (★ NEW) | `.vcxproj` `<WindowsTargetPlatformVersion>` | `winget install Microsoft.WindowsSDK.<ver>` | machine | ✓ (1×) |
+| `cmake` (★ NEW) | `CMakeLists.txt` `cmake_minimum_required` | `winget install Kitware.CMake` | user | ✗ |
+| `ninja` (★ NEW) | implied by CMake projects | `winget install Ninja-build.Ninja` | user | ✗ |
+
+Plan envelope (`ToolchainPlan`) includes step `kind` field that agents/editors can branch on. Existing flags work unchanged: `--toolchain-plan / --toolchain-apply --yes / --toolchain-sync / --toolchain-doctor`.
+
+See [`features/toolchain-phase2.md`](../features/toolchain-phase2.md) for spec.
 
 ---
 

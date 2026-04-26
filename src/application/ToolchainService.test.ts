@@ -5,7 +5,11 @@ import {
   snapshotWithSdks,
   snapshotWithGlobalJson,
 } from '../__fixtures__/snapshots.js';
-import { makeCsproj } from '../__fixtures__/projects.js';
+import {
+  makeCsproj,
+  makeVcxproj,
+  makeCMakeProject,
+} from '../__fixtures__/projects.js';
 import type { InstallStep } from '../domain/models/InstallPlan.js';
 
 function findStep(steps: InstallStep[], kind: InstallStep['kind']): InstallStep | undefined {
@@ -213,5 +217,99 @@ describe('ToolchainService.plan()', () => {
     const plan = service.plan(snapshot, projects);
     expect(findStep(plan.steps, 'dotnet-sdk')).toBeDefined();
     expect(findStep(plan.steps, 'dotnet-workload')).toBeDefined();
+  });
+
+  describe('C++ / Phase 2', () => {
+    it('produces an msvc-toolset step (machine scope) for a vcxproj missing PlatformToolset', () => {
+      const service = new ToolchainService();
+      const snapshot = makeSnapshot();
+      const projects = [makeVcxproj({ platformToolset: 'v143', windowsSdkVersion: null })];
+
+      const plan = service.plan(snapshot, projects);
+      const msvc = findStep(plan.steps, 'msvc-toolset');
+      expect(msvc).toBeDefined();
+      expect(msvc!.scope).toBe('machine');
+      expect(msvc!.needsAdmin).toBe(true);
+      expect(msvc!.displayName).toMatch(/^VS Build Tools /);
+      expect(msvc!.displayName).toContain('v143');
+      expect(msvc!.source.url).toBe('https://aka.ms/vs/17/release/vs_BuildTools.exe');
+      expect(msvc!.source.signer).toBe('Microsoft');
+      expect(msvc!.command.executable.endsWith('vs_BuildTools.exe')).toBe(true);
+      expect(msvc!.command.args).toContain('--quiet');
+      expect(msvc!.command.args).toContain('--add');
+    });
+
+    it('produces a windows-sdk step (machine scope) for a vcxproj with WindowsTargetPlatformVersion', () => {
+      const service = new ToolchainService();
+      const snapshot = makeSnapshot();
+      const projects = [makeVcxproj({ platformToolset: null, windowsSdkVersion: '10.0.22621.0' })];
+
+      const plan = service.plan(snapshot, projects);
+      const sdkStep = findStep(plan.steps, 'windows-sdk');
+      expect(sdkStep).toBeDefined();
+      expect(sdkStep!.scope).toBe('machine');
+      expect(sdkStep!.needsAdmin).toBe(true);
+      expect(sdkStep!.displayName).toMatch(/^Windows SDK /);
+      expect(sdkStep!.source.url).toBe('winget://Microsoft.WindowsSDK');
+      expect(sdkStep!.command.executable).toBe('winget');
+      expect(sdkStep!.command.args[1]).toBe('Microsoft.WindowsSDK.10.0.22621');
+    });
+
+    it('produces a cmake step (user scope) for a cmake project', () => {
+      const service = new ToolchainService();
+      const snapshot = makeSnapshot();
+      const projects = [makeCMakeProject()];
+
+      const plan = service.plan(snapshot, projects);
+      const cmakeStep = findStep(plan.steps, 'cmake');
+      expect(cmakeStep).toBeDefined();
+      expect(cmakeStep!.scope).toBe('user');
+      expect(cmakeStep!.needsAdmin).toBe(false);
+      expect(cmakeStep!.displayName).toMatch(/^CMake /);
+      expect(cmakeStep!.source.url).toBe('winget://Kitware.CMake');
+      expect(cmakeStep!.command.executable).toBe('winget');
+      expect(cmakeStep!.command.args[1]).toBe('Kitware.CMake');
+    });
+
+    it('produces a ninja step alongside cmake for a cmake project', () => {
+      const service = new ToolchainService();
+      const snapshot = makeSnapshot();
+      const projects = [makeCMakeProject()];
+
+      const plan = service.plan(snapshot, projects);
+      const ninjaStep = findStep(plan.steps, 'ninja');
+      expect(ninjaStep).toBeDefined();
+      expect(ninjaStep!.scope).toBe('user');
+      expect(ninjaStep!.source.url).toBe('winget://Ninja-build.Ninja');
+      expect(ninjaStep!.command.args[1]).toBe('Ninja-build.Ninja');
+    });
+
+    it('size hints differ across new kinds (msvc-toolset is the largest)', () => {
+      const service = new ToolchainService();
+      const snapshot = makeSnapshot();
+      const projects = [
+        makeVcxproj(),
+        makeCMakeProject({ filePath: '/proj/CMakeLists.txt' }),
+      ];
+
+      const plan = service.plan(snapshot, projects);
+      const msvc = findStep(plan.steps, 'msvc-toolset');
+      const winSdk = findStep(plan.steps, 'windows-sdk');
+      const cmake = findStep(plan.steps, 'cmake');
+      const ninja = findStep(plan.steps, 'ninja');
+
+      expect(msvc!.sizeBytes!).toBeGreaterThan(winSdk!.sizeBytes!);
+      expect(winSdk!.sizeBytes!).toBeGreaterThan(cmake!.sizeBytes!);
+      expect(cmake!.sizeBytes!).toBeGreaterThan(ninja!.sizeBytes!);
+    });
+
+    it('plan.needsAdmin is true when any step is machine scope', () => {
+      const service = new ToolchainService();
+      const snapshot = makeSnapshot();
+      const projects = [makeVcxproj()];
+
+      const plan = service.plan(snapshot, projects);
+      expect(plan.needsAdmin).toBe(true);
+    });
   });
 });

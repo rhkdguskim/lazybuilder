@@ -40,6 +40,7 @@ const KNOWN_SUBCOMMANDS = new Set([
   '--metrics-export',
   'mcp',
   'lsp',
+  'debug',
 ]);
 
 const distMain = resolve(here, '..', 'dist', 'main.js');
@@ -48,6 +49,7 @@ const distToolchainCli = resolve(here, '..', 'dist', 'cli', 'toolchainCli.js');
 const distIntelligenceCli = resolve(here, '..', 'dist', 'cli', 'intelligenceCli.js');
 const distMcpCli = resolve(here, '..', 'dist', 'cli', 'mcpCli.js');
 const distLspCli = resolve(here, '..', 'dist', 'cli', 'lspCli.js');
+const distDebugCli = resolve(here, '..', 'dist', 'cli', 'debugCli.js');
 
 if (!existsSync(distMain)) {
   console.error('[lazybuilder] dist/ is missing. Run "npm run build" first.');
@@ -82,6 +84,7 @@ Usage:
   lazybuilder --metrics-export      Export raw build metrics (NDJSON or JSON)
   lazybuilder mcp                   Run MCP stdio server (for AI agents)
   lazybuilder lsp                   Run LSP stdio server (for editors)
+  lazybuilder debug start <proj>    Start a netcoredbg session (one-shot, JSON output)
   lazybuilder --help, -h            Show this help
 
 Toolchain options:
@@ -186,6 +189,16 @@ async function dispatchLsp(rest) {
   process.exit(code);
 }
 
+async function dispatchDebug(rest) {
+  if (!existsSync(distDebugCli)) {
+    console.error('[lazybuilder] dist/cli/debugCli.js missing — run "npm run build".');
+    process.exit(1);
+  }
+  const mod = await import(distDebugCli);
+  const code = await mod.runDebugCli(rest);
+  process.exit(code);
+}
+
 async function dispatchCheckUpdate() {
   const checker = await loadUpdater();
   const result = await checker.check();
@@ -243,6 +256,7 @@ try {
   if (first === '--metrics-export')                                await dispatchMetricsExport(rest);
   if (first === 'mcp')                                             await dispatchMcp(rest);
   if (first === 'lsp')                                             await dispatchLsp(rest);
+  if (first === 'debug')                                           await dispatchDebug(rest);
 } catch (err) {
   console.error('[lazybuilder]', err?.message ?? err);
   process.exit(1);

@@ -1,4 +1,11 @@
-export type ToolchainKind = 'dotnet-sdk' | 'dotnet-runtime' | 'dotnet-workload';
+export type ToolchainKind =
+  | 'dotnet-sdk'
+  | 'dotnet-runtime'
+  | 'dotnet-workload'
+  | 'msvc-toolset'
+  | 'windows-sdk'
+  | 'cmake'
+  | 'ninja';
 
 export type ToolchainSeverity = 'required' | 'recommended';
 

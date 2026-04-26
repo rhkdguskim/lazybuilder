@@ -51,9 +51,11 @@ Always invoke **headlessly** when the caller is an AI. The TUI is for humans onl
 | NDJSON build stream | 🚧 planned | Spec in `docs/agents/cli-reference.md` |
 | **Toolchain Resolver** (auto-install missing .NET SDK) | ✅ shipped | `lazybuilder --toolchain-plan / --toolchain-apply --yes / --toolchain-sync / --toolchain-doctor` |
 | **Build Intelligence** (regression + flaky detection) | ✅ shipped | `lazybuilder --regressions / --flaky / --metrics-export` |
-| **MCP Server** (AI tool surface) | ✅ shipped | `lazybuilder mcp` — register in Claude Code mcp.json |
-| **LSP Server** (editor integration) | ✅ shipped (Phase C-1: diagnostics + hover) | `lazybuilder lsp` — for `.csproj`, `global.json` |
-| **Debugger** (DAP + AI primitives) | 📋 spec only | See `docs/features/debugger.md` |
+| **MCP Server** (AI tool surface) | ✅ shipped (16 tools) | `lazybuilder mcp` — register in Claude Code mcp.json |
+| **LSP Server** (editor integration) | ✅ shipped (Phase C-1+C-3) | `lazybuilder lsp` — diagnostics, hover, codeAction (Install missing SDK) |
+| **Toolchain Phase 2** (C++ / VS Build Tools / Windows SDK / CMake) | ✅ shipped | Same `--toolchain-*` flags, new step kinds: `msvc-toolset`, `windows-sdk`, `cmake`, `ninja` |
+| **Debugger D-1** (DAP + netcoredbg + `debug.snapshot`) | ✅ shipped | `lazybuilder debug start <proj>` (CLI one-shot) + 9 MCP `debug.*` tools |
+| **Debugger D-2** (AI primitives: run_until_exception, investigate_test, observe) | 📋 spec only | Next sprint, see `docs/features/debugger.md` |
 | Programmatic ESM API export | 🔭 future | Spec in `docs/agents/architecture.md` § Public API |
 
 > **If a section says "planned", do not assume the flag exists yet.** Use the programmatic fallback in `recipes.md`.
