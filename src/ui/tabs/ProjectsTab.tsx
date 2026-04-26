@@ -5,6 +5,7 @@ import { ProgressPanel } from '../components/ProgressPanel.js';
 import { ScrollableList } from '../components/ScrollableList.js';
 import { PageHeader, Panel } from '../components/index.js';
 import { reduceListSelection } from '../navigation/listNavigation.js';
+import { glyphs, symbols } from '../themes/colors.js';
 import type { ProjectInfo, SolutionInfo } from '../../domain/models/ProjectInfo.js';
 
 const typeIcons: Record<string, string> = {
@@ -85,7 +86,7 @@ export const ProjectsTab: React.FC = () => {
                 const solution = item.data;
                 return (
                   <Text key={item.key} inverse={isSelected}>
-                    {isSelected ? ' ▶ ' : '   '}
+                    {isSelected ? ` ${glyphs.play} ` : '   '}
                     <Text color="cyan">[SLN]</Text>
                     {' '}{solution.name}.sln
                     <Text color="gray"> ({solution.solutionType}, {solution.projects.length} proj)</Text>
@@ -97,7 +98,7 @@ export const ProjectsTab: React.FC = () => {
               const color = typeColors[proj.projectType] ?? 'gray';
               return (
                 <Text key={item.key} inverse={isSelected}>
-                  {isSelected ? ' ▶ ' : '   '}
+                  {isSelected ? ` ${glyphs.play} ` : '   '}
                   <Text color={color}>[{icon}]</Text>
                   {' '}{proj.name}
                   {proj.riskFlags.length > 0 && <Text color="yellow"> !</Text>}
@@ -201,7 +202,7 @@ const ProjectDetail: React.FC<{ project: ProjectInfo }> = ({ project }) => {
           <Box height={1} />
           <Text bold color="yellow">Risk Flags:</Text>
           {project.riskFlags.map(flag => (
-            <Text key={flag} color="yellow">  ⚠ {flag}</Text>
+            <Text key={flag} color="yellow" wrap="truncate">  {symbols.warning} {flag}</Text>
           ))}
         </>
       )}

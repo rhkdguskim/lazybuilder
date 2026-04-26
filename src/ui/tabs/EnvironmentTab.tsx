@@ -6,6 +6,7 @@ import { ProgressPanel } from '../components/ProgressPanel.js';
 import { PageHeader, Panel } from '../components/index.js';
 import { reduceListSelection } from '../navigation/listNavigation.js';
 import { compactPath, truncateEnd } from '../utils/text.js';
+import { glyphs, symbols } from '../themes/colors.js';
 
 type Category = 'dotnet' | 'msbuild' | 'vs' | 'cpp' | 'winsdk' | 'cmake' | 'packages';
 
@@ -55,7 +56,7 @@ export const EnvironmentTab: React.FC = () => {
           <Panel title="Categories" minHeight={10} flexGrow={1}>
             {CATEGORIES.map((cat, i) => (
               <Text key={cat.id} inverse={i === selectedIdx} color={i === selectedIdx ? 'blue' : undefined} wrap="truncate">
-                {i === selectedIdx ? ' ▶ ' : '   '}{cat.label}
+                {i === selectedIdx ? ` ${glyphs.play} ` : '   '}{cat.label}
               </Text>
             ))}
           </Panel>
@@ -178,7 +179,7 @@ function renderCategoryDetail(snapshot: NonNullable<ReturnType<typeof useAppStor
             <>
               <Text bold>Windows 10/11 SDK:</Text>
               {win10.slice(0, 5).map(v => (
-                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">✔</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
+                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">{symbols.ok}</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
               ))}
               <MoreLine hidden={Math.max(0, win10.length - 5)} />
             </>
@@ -188,7 +189,7 @@ function renderCategoryDetail(snapshot: NonNullable<ReturnType<typeof useAppStor
             <>
               <Text bold>Windows 8.1 SDK:</Text>
               {win81.map(v => (
-                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">✔</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
+                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">{symbols.ok}</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
               ))}
             </>
           )}
@@ -197,7 +198,7 @@ function renderCategoryDetail(snapshot: NonNullable<ReturnType<typeof useAppStor
             <>
               <Text bold>Windows 8.0 SDK:</Text>
               {win80.map(v => (
-                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">✔</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
+                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">{symbols.ok}</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
               ))}
             </>
           )}
@@ -206,7 +207,7 @@ function renderCategoryDetail(snapshot: NonNullable<ReturnType<typeof useAppStor
             <>
               <Text bold>Windows 7 / Legacy SDK:</Text>
               {win7.map(v => (
-                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">✔</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
+                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">{symbols.ok}</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
               ))}
             </>
           )}
@@ -215,7 +216,7 @@ function renderCategoryDetail(snapshot: NonNullable<ReturnType<typeof useAppStor
             <>
               <Text bold>Other SDK:</Text>
               {other.map(v => (
-                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">✔</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
+                <Text key={v.version + v.installedPath} wrap="truncate">  <Text color="green">{symbols.ok}</Text> {v.version} <Text color="gray">[{compactPath(v.installedPath, 38)}]</Text></Text>
               ))}
             </>
           )}

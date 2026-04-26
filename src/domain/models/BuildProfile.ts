@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { BuildSystem, Verbosity } from '../enums.js';
 
 export interface BuildProfile {
@@ -11,11 +12,15 @@ export interface BuildProfile {
   useDeveloperShell: boolean;
   enableBinaryLog: boolean;
   verbosity: Verbosity;
+  /** Run build steps in parallel. Default true. Adapter emits the right flag (/m, -m, --parallel). */
+  parallel: boolean;
+  /** Explicit job count override. undefined = auto-detect from hardware. */
+  parallelJobs?: number;
 }
 
 export function createDefaultProfile(targetPath: string, buildSystem: BuildSystem): BuildProfile {
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name: 'Default',
     targetPath,
     buildSystem,
@@ -25,5 +30,6 @@ export function createDefaultProfile(targetPath: string, buildSystem: BuildSyste
     useDeveloperShell: buildSystem === 'msbuild',
     enableBinaryLog: false,
     verbosity: 'minimal',
+    parallel: true,
   };
 }

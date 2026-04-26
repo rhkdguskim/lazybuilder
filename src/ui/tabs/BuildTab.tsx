@@ -1,15 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { randomUUID } from 'node:crypto';
+import { Box, Text, useInput, useStdout } from 'ink';
 import { useAppStore, type BuildTargetFilter } from '../store/useAppStore.js';
 import { useBuild } from '../hooks/useBuild.js';
 import { ProgressPanel } from '../components/ProgressPanel.js';
 import { ScrollableList } from '../components/ScrollableList.js';
 import { PageHeader, Panel } from '../components/index.js';
+import { useMouseInput } from '../hooks/useMouseInput.js';
 import { glyphs, legacyWindowsConsole } from '../themes/colors.js';
 import { compactPath } from '../utils/text.js';
 import type { ProjectInfo, SolutionInfo } from '../../domain/models/ProjectInfo.js';
 import type { BuildProfile } from '../../domain/models/BuildProfile.js';
+import type { BuildDiagnostic, BuildResult } from '../../domain/models/BuildResult.js';
 import type { BuildSystem } from '../../domain/enums.js';
+import { detectHardware } from '../../infrastructure/system/HardwareDetector.js';
+import { recommendedJobs } from '../../domain/buildOptimizer.js';
+
+const HARDWARE = detectHardware();
 
 type FocusArea = 'targets' | 'settings' | 'action' | 'output';
 type SettingField = 'configuration' | 'platform' | 'verbosity' | 'parallel' | 'devshell';
@@ -42,6 +49,8 @@ type BuildTarget = {
 const isTTY = !!process.stdin.isTTY;
 
 export const BuildTab: React.FC = () => {
+  const { stdout } = useStdout();
+  const columns = stdout?.columns ?? 80;
   const isActiveTab = useAppStore(s => s.activeTab) === 'build';
   const projects = useAppStore(s => s.projects);
   const solutions = useAppStore(s => s.solutions);
@@ -168,8 +177,12 @@ export const BuildTab: React.FC = () => {
   }, [currentTarget?.path]);
 
   useEffect(() => {
+    if (filteredTargets.length === 0) {
+      if (targetIdx !== 0) setTargetIdx(0);
+      return;
+    }
     if (targetIdx >= filteredTargets.length) {
-      setTargetIdx(Math.max(0, filteredTargets.length - 1));
+      setTargetIdx(filteredTargets.length - 1);
     }
   }, [targetIdx, filteredTargets.length]);
 
@@ -189,15 +202,16 @@ export const BuildTab: React.FC = () => {
   const profile: BuildProfile | null = useMemo(() => {
     if (!currentTarget) return null;
     return {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       name: 'Quick Build',
       targetPath: currentTarget.path,
       buildSystem: currentTarget.buildSystem,
       configuration: uniqueConfigs[configIdx] ?? 'Debug',
       platform: uniquePlatforms[platformIdx] ?? 'Any CPU',
-      extraArguments: parallelBuild ? ['/m'] : [],
+      extraArguments: [],
       useDeveloperShell: useDevShell,
       enableBinaryLog: false,
+      parallel: parallelBuild,
       verbosity: VERBOSITIES[verbosityIdx]!,
     };
   }, [currentTarget, configIdx, platformIdx, verbosityIdx, parallelBuild, useDevShell]);
@@ -217,6 +231,29 @@ export const BuildTab: React.FC = () => {
       setElapsedMs(0);
       start(proj, profile);
     }
+  };
+
+  const runQuickCheck = () => {
+    if (!currentTarget || !profile) return;
+    const proj = currentTarget.project ?? currentTarget.solution?.projects[0];
+    if (!proj) return;
+
+    const analyzerArgs = currentTarget.buildSystem === 'dotnet'
+      ? ['--no-restore', '/p:RunAnalyzers=true', '/p:RunAnalyzersDuringBuild=true']
+      : currentTarget.buildSystem === 'msbuild'
+        ? ['/p:RunAnalyzers=true', '/p:RunAnalyzersDuringBuild=true']
+        : [];
+
+    const checkProfile: BuildProfile = {
+      ...profile,
+      id: randomUUID(),
+      name: 'Quick Check',
+      verbosity: 'minimal',
+      extraArguments: [...new Set([...profile.extraArguments, ...analyzerArgs])],
+    };
+
+    setElapsedMs(0);
+    start(proj, checkProfile);
   };
 
   // Elapsed time tracker during build
@@ -279,6 +316,49 @@ export const BuildTab: React.FC = () => {
       return;
     }
 
+    if (buildSearchActive) {
+      if (key.escape || key.return) {
+        setBuildSearchActive(false);
+        return;
+      }
+      if (key.backspace || key.delete) {
+        updateTargetQuery(targetQuery.slice(0, -1));
+        return;
+      }
+      if (key.ctrl && input === 'u') {
+        updateTargetQuery('');
+        return;
+      }
+      if (input && !key.ctrl && !key.meta) {
+        updateTargetQuery(`${targetQuery}${input}`);
+      }
+      return;
+    }
+
+    if (input === '/') {
+      setFocusArea('targets');
+      setBuildSearchActive(true);
+      return;
+    }
+
+    if (input === 'f' && focusArea !== 'output') {
+      cycleTargetFilter(1);
+      setFocusArea('targets');
+      return;
+    }
+
+    if (input === 'F' && focusArea !== 'output') {
+      cycleTargetFilter(-1);
+      setFocusArea('targets');
+      return;
+    }
+
+    if (input === 'x' && focusArea === 'targets') {
+      updateTargetQuery('');
+      setTargetFilter('all');
+      return;
+    }
+
     if (key.tab) {
       cycleFocusArea(key.shift ? -1 : 1);
       return;
@@ -298,10 +378,10 @@ export const BuildTab: React.FC = () => {
         return;
       }
       if (key.downArrow || input === 'j') {
-        setTargetIdx(Math.min(targets.length - 1, targetIdx + 1));
+        setTargetIdx(Math.max(0, Math.min(filteredTargets.length - 1, targetIdx + 1)));
         return;
       }
-      if (key.rightArrow || input === 'l' || key.return) {
+      if ((key.rightArrow || input === 'l' || key.return) && currentTarget) {
         setFocusArea('settings');
         return;
       }
@@ -378,6 +458,10 @@ export const BuildTab: React.FC = () => {
         runBuild();
         return;
       }
+      if (input === 'a' || input === 'A') {
+        runQuickCheck();
+        return;
+      }
     }
 
     if (focusArea === 'output') {
@@ -394,10 +478,36 @@ export const BuildTab: React.FC = () => {
       return;
     }
 
+    if (input === 'a' || input === 'A') {
+      runQuickCheck();
+      return;
+    }
+
     if (input === '\x1b[15~' || input === 'b' || (key.ctrl && input === 'b')) {
       runBuild();
     }
   }, { isActive: isTTY && isActiveTab });
+
+  const splitColumn = Math.max(28, Math.floor(columns * 0.45));
+
+  useMouseInput((event) => {
+    if (status === 'running') return;
+
+    if (event.type === 'click') {
+      if (event.x <= splitColumn) {
+        setFocusArea(event.y >= 18 ? 'settings' : 'targets');
+        return;
+      }
+
+      setFocusArea(event.y <= 10 ? 'action' : 'output');
+      return;
+    }
+
+    if (event.x <= splitColumn) {
+      setFocusArea('targets');
+      setTargetIdx(Math.max(0, Math.min(filteredTargets.length - 1, targetIdx + event.direction)));
+    }
+  }, isTTY && isActiveTab && !buildSearchActive);
 
   if (targets.length === 0) {
     return (
@@ -413,19 +523,37 @@ export const BuildTab: React.FC = () => {
     : result && status !== 'idle'
       ? `${result.status === 'success' ? 'OK' : 'FAIL'} ${formatDuration(result.durationMs)} | ${result.errorCount}E ${result.warningCount}W`
       : '';
+  const activeFilterLabel = TARGET_FILTERS.find(filter => filter.value === targetFilter)?.label ?? 'All';
+  const targetPanelSubtitle = buildSearchActive
+    ? 'Search: type text, Enter/Esc finish, Ctrl+U clear'
+    : '/ search | f/F filter | x clear | j/k move';
+  const canBuild = !!currentTarget && !!profile;
+  const targetMaxVisible = focusArea === 'settings' ? 4 : 8;
+  const autoJobs = currentTarget
+    ? recommendedJobs({
+        buildSystem: currentTarget.buildSystem,
+        projectType: currentTarget.project?.projectType,
+        hardware: HARDWARE,
+      })
+    : HARDWARE.cpuCores;
+  const parallelLabel = parallelBuild ? `auto x${autoJobs}` : 'off';
+  const settingsSummary = `${uniqueConfigs[configIdx] ?? 'Debug'} | ${uniquePlatforms[platformIdx] ?? 'Any CPU'} | ${VERBOSITIES[verbosityIdx]} | jobs ${parallelLabel} | dev ${useDevShell ? 'on' : 'off'}`;
 
   return (
     <Box flexDirection="column" flexGrow={1} overflowY="hidden" padding={1}>
       <PageHeader
         title="Build"
-        subtitle="Choose a target, adjust options, and run the build."
-        rightHint="Tab section | j/k move | h/l change | Enter build"
+        subtitle="Search/filter targets, configure, build, or run analyzer check."
       />
 
-      <Box flexDirection="row" flexShrink={0} marginBottom={1}>
+      <Box flexDirection="row" flexShrink={0}>
         <Box marginRight={1}>
-          <Text inverse={focusArea === 'action'} color={status === 'running' ? 'red' : 'green'} bold>
-            {status === 'running' ? ` ${glyphs.stop} Cancel (Esc) ` : ` ${glyphs.play} Build (Enter) `}
+          <Text inverse={focusArea === 'action'} color={status === 'running' ? 'red' : canBuild ? 'green' : 'gray'} bold>
+            {status === 'running'
+              ? ` ${glyphs.stop} Cancel (Esc) `
+              : canBuild
+                ? ` ${glyphs.play} Build Enter | Check a `
+                : ' No target '}
           </Text>
         </Box>
         {statusLine ? (
@@ -438,92 +566,126 @@ export const BuildTab: React.FC = () => {
       </Box>
 
       {/* Main: left config + right output */}
-      <Box flexDirection="row" flexGrow={1} overflowY="hidden" marginTop={1}>
+      <Box flexDirection="row" flexGrow={1} overflowY="hidden">
         {/* Left: Targets + Settings */}
-        <Box flexDirection="column" width="40%" paddingRight={1} overflowY="hidden">
+        <Box flexDirection="column" width="45%" paddingRight={1} overflowY="hidden">
           <Panel
-            title="Targets"
+            title={`Targets ${filteredTargets.length}/${targets.length}`}
             focused={focusArea === 'targets'}
-            subtitle={focusArea === 'targets' ? 'j/k or g/G to move' : ''}
+            subtitle={focusArea === 'targets' ? targetPanelSubtitle : `${activeFilterLabel}${targetQuery ? ` | ${targetQuery}` : ''}`}
           >
+            <Box flexDirection="column" flexShrink={0} marginBottom={1} overflow="hidden">
+              <Text wrap="truncate">
+                <Text color="gray">Filter </Text>
+                <Text inverse color="cyan"> {activeFilterLabel} </Text>
+                <Text color="gray">  Search </Text>
+                <Text color={buildSearchActive ? 'cyan' : targetQuery ? 'white' : 'gray'} inverse={buildSearchActive} wrap="truncate">
+                  {buildSearchActive ? ` ${targetQuery || 'type...'} ` : ` ${targetQuery || 'none'} `}
+                </Text>
+              </Text>
+            </Box>
             <ScrollableList
               selectedIdx={targetIdx}
-              maxVisible={8}
+              maxVisible={targetMaxVisible}
               onSelect={setTargetIdx}
-              items={targets.map((target, i) => (
-                <Text key={target.path} inverse={i === targetIdx} wrap="truncate">
-                  {i === targetIdx ? `${glyphs.play} ` : '  '}{target.label}
-                </Text>
-              ))}
+              mouseScroll={false}
+              items={filteredTargets.length === 0
+                ? [
+                    <Text key="empty" color="yellow" wrap="truncate">
+                      No targets match. Press / to search or x to clear.
+                    </Text>,
+                  ]
+                : filteredTargets.map((target, i) => (
+                    <Text key={target.path} inverse={i === targetIdx} wrap="truncate">
+                      {i === targetIdx ? `${glyphs.play} ` : '  '}
+                      <Text color={target.kind === 'solution' ? 'cyan' : 'green'}>
+                        [{target.kind === 'solution' ? 'SLN' : 'PRJ'}]
+                      </Text>
+                      {' '}{target.label}
+                      <Text color="gray"> {compactPath(target.path, 28)}</Text>
+                    </Text>
+                  ))
+              }
             />
           </Panel>
 
-          <Box marginTop={1} />
-          <Panel
-            title="Settings"
-            focused={focusArea === 'settings'}
-            subtitle={focusArea === 'settings' ? 'h/l changes values' : ''}
-          >
-            <>
+          {focusArea === 'settings' ? (
+            <Panel
+              title="Settings"
+              focused
+              subtitle="h/l changes values"
+              marginTop={1}
+              flexShrink={0}
+            >
               <FieldRow
                 label="Config"
                 value={uniqueConfigs[configIdx] ?? 'Debug'}
-                active={focusArea === 'settings' && activeSetting === 'configuration'}
+                active={activeSetting === 'configuration'}
                 options={uniqueConfigs}
                 selectedIdx={configIdx}
               />
               <FieldRow
                 label="Platform"
                 value={uniquePlatforms[platformIdx] ?? 'Any CPU'}
-                active={focusArea === 'settings' && activeSetting === 'platform'}
+                active={activeSetting === 'platform'}
                 options={uniquePlatforms}
                 selectedIdx={platformIdx}
               />
               <FieldRow
                 label="Verbose"
                 value={VERBOSITIES[verbosityIdx]!}
-                active={focusArea === 'settings' && activeSetting === 'verbosity'}
+                active={activeSetting === 'verbosity'}
                 options={[...VERBOSITIES]}
                 selectedIdx={verbosityIdx}
               />
               <FieldRow
                 label="Parallel"
-                value={parallelBuild ? 'ON' : 'OFF'}
-                active={focusArea === 'settings' && activeSetting === 'parallel'}
-                hint={parallelBuild ? '/m enabled' : 'single process'}
+                value={parallelBuild ? `AUTO x${autoJobs}` : 'OFF'}
+                active={activeSetting === 'parallel'}
+                hint={parallelBuild
+                  ? `${HARDWARE.cpuCores} cores, ${HARDWARE.totalMemoryGB}GB RAM`
+                  : 'single process'}
               />
               <FieldRow
                 label="DevShell"
                 value={useDevShell ? 'ON' : 'OFF'}
-                active={focusArea === 'settings' && activeSetting === 'devshell'}
+                active={activeSetting === 'devshell'}
                 hint={useDevShell ? 'VsDevCmd enabled' : 'direct execution'}
               />
-            </>
-          </Panel>
+            </Panel>
+          ) : (
+            <Box flexShrink={0} marginTop={1} overflow="hidden">
+              <Text color="gray" wrap="truncate">Settings: {settingsSummary}</Text>
+            </Box>
+          )}
         </Box>
 
         {/* Right: Live output (isolated to prevent logEntries re-renders from cascading) */}
         <Box flexDirection="column" flexGrow={1} overflowY="hidden" paddingLeft={1}>
-          <Panel title="Command Preview">
-            <Text color="gray" wrap="wrap">{commandPreview ? `$ ${commandPreview}` : 'Select a target to preview the command.'}</Text>
-          </Panel>
+          <Box flexDirection="column" flexShrink={0} marginBottom={1} overflow="hidden">
+            <Text color="gray" wrap="truncate">Cmd: {commandPreview || 'Select a target to preview the command.'}</Text>
+            <Text wrap="truncate">
+              <Text color="gray">Result: </Text>
+              <Text color={result?.status === 'success' ? 'green' : result?.status === 'failure' ? 'red' : status === 'running' ? 'yellow' : 'gray'}>
+                {result ? result.status : status === 'running' ? 'building' : 'ready'}
+              </Text>
+              <Text color="gray"> | </Text>
+              <Text color="gray">{result ? formatDuration(result.durationMs) : '-'}</Text>
+              <Text color="gray"> | </Text>
+              <Text color={result && result.errorCount > 0 ? 'red' : 'gray'}>{result?.errorCount ?? 0}E</Text>
+              <Text color="gray"> </Text>
+              <Text color={result && result.warningCount > 0 ? 'yellow' : 'gray'}>{result?.warningCount ?? 0}W</Text>
+            </Text>
+            {result && <DiagnosticPreview result={result} />}
+          </Box>
 
-          <Box marginTop={1} />
-          <Panel title="Result">
-            <ResultRow label="Status" value={result ? result.status : status === 'running' ? 'building' : '-'} color={result?.status === 'success' ? 'green' : result?.status === 'failure' ? 'red' : 'gray'} />
-            <ResultRow label="Duration" value={result ? formatDuration(result.durationMs) : '-'} />
-            <ResultRow label="Errors" value={result ? String(result.errorCount) : '-'} color={result && result.errorCount > 0 ? 'red' : 'gray'} />
-            <ResultRow label="Warnings" value={result ? String(result.warningCount) : '-'} color={result && result.warningCount > 0 ? 'yellow' : 'gray'} />
-          </Panel>
-
-          <Box marginTop={1} />
-          <BuildOutputPanel focused={focusArea === 'output'} />
+          <BuildOutputPanel focused={focusArea === 'output'} minColumn={splitColumn + 1} />
         </Box>
       </Box>
 
       {/* Bottom hints */}
       <Box flexShrink={0}>
-        <Text color="gray" wrap="truncate">Tab: section | j/k: move | h/l: change | Enter/b: build | Esc: cancel</Text>
+        <Text color="gray" wrap="truncate">Tab: section | / search | f filter | a quick check | Enter/b build | Esc cancel</Text>
       </Box>
     </Box>
   );
@@ -539,7 +701,7 @@ interface FieldRowProps {
 }
 
 /** Isolated component with scroll — only re-renders when logEntries or buildStatus changes */
-const BuildOutputPanel: React.FC<{ focused?: boolean }> = React.memo(({ focused = false }) => {
+const BuildOutputPanel: React.FC<{ focused?: boolean; minColumn: number }> = React.memo(({ focused = false, minColumn }) => {
   const logEntries = useAppStore(s => s.logEntries);
   const status = useAppStore(s => s.buildStatus);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -570,6 +732,22 @@ const BuildOutputPanel: React.FC<{ focused?: boolean }> = React.memo(({ focused 
     if (input === 'G') { setFollowing(true); setScrollOffset(maxOffset); }
     if (input === 'f') setFollowing(f => !f);
   }, { isActive: isTTY && focused });
+
+  useMouseInput((event) => {
+    if (event.type !== 'scroll' || event.x < minColumn) return;
+
+    if (event.direction === -1) {
+      setFollowing(false);
+      setScrollOffset(o => Math.max(0, o - 1));
+      return;
+    }
+
+    setScrollOffset(o => {
+      const next = Math.min(maxOffset, o + 1);
+      if (next >= maxOffset) setFollowing(true);
+      return next;
+    });
+  }, isTTY && focused);
 
   return (
     <Panel title="Output" focused={focused} subtitle={
@@ -630,14 +808,30 @@ const FieldRow: React.FC<FieldRowProps> = ({ label, value, active, hint, options
   );
 };
 
-const ResultRow: React.FC<{ label: string; value: string; color?: string }> = ({ label, value, color }) => (
-  <Box flexDirection="row">
-    <Box width={12}>
-      <Text color="gray">{label}</Text>
+const DiagnosticPreview: React.FC<{ result: BuildResult }> = ({ result }) => {
+  const diagnostics: Array<BuildDiagnostic & { severity: 'error' | 'warning' }> = [
+    ...result.errors.slice(0, 2).map(item => ({ ...item, severity: 'error' as const })),
+    ...result.warnings.slice(0, Math.max(0, 3 - Math.min(2, result.errors.length))).map(item => ({ ...item, severity: 'warning' as const })),
+  ];
+
+  if (diagnostics.length === 0) {
+    return <Text color="gray" wrap="truncate">Diagnostics: none</Text>;
+  }
+
+  return (
+    <Box flexDirection="column" marginTop={1} overflow="hidden">
+      {diagnostics.map((item, index) => (
+        <Text
+          key={`${item.file ?? 'diagnostic'}-${item.line ?? 0}-${item.code}-${index}`}
+          color={item.severity === 'error' ? 'red' : 'yellow'}
+          wrap="truncate"
+        >
+          {item.code}: {item.message}
+        </Text>
+      ))}
     </Box>
-    <Text color={color as any}>{value}</Text>
-  </Box>
-);
+  );
+};
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;

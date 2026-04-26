@@ -6,3 +6,4 @@ export * from './BuildResult.js';
 export * from './DiagnosticItem.js';
 export * from './LogEntry.js';
 export * from './EnvironmentSnapshot.js';
+export * from './HardwareInfo.js';

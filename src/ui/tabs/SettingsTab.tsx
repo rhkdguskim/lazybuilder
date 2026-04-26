@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { PageHeader, Panel } from '../components/index.js';
+import { glyphs, symbols } from '../themes/colors.js';
 import { EnvironmentService } from '../../application/EnvironmentService.js';
 import { ProjectScanService } from '../../application/ProjectScanService.js';
 import { DiagnosticsService } from '../../application/DiagnosticsService.js';
@@ -104,10 +105,10 @@ export const SettingsTab: React.FC = () => {
             return (
               <Box key={action.id} flexDirection="row">
                 <Text inverse={isSelected} color={isSelected ? 'cyan' : undefined}>
-                  {isSelected ? ' ▶ ' : '   '}
-                  {isRunning ? '⟳ ' : ''}{action.label}
+                  {isSelected ? ` ${glyphs.play} ` : '   '}
+                  {isRunning ? `${glyphs.running} ` : ''}{action.label}
                 </Text>
-                <Text color="gray"> — {action.description}</Text>
+                <Text color="gray" wrap="truncate"> - {action.description}</Text>
               </Box>
             );
           })}
@@ -116,7 +117,7 @@ export const SettingsTab: React.FC = () => {
 
       <Box marginTop={1}>
         <Text color={running ? 'yellow' : lastResult ? (lastResult.startsWith('Error') ? 'red' : 'green') : 'gray'}>
-          {running ? `Running: ${running}...` : lastResult ? (lastResult === 'Done' ? '✔ Completed' : lastResult) : 'Ready'}
+          {running ? `Running: ${running}...` : lastResult ? (lastResult === 'Done' ? `${symbols.ok} Completed` : lastResult) : 'Ready'}
         </Text>
       </Box>
 
@@ -124,7 +125,7 @@ export const SettingsTab: React.FC = () => {
         <Panel title="Info">
           <>
             <Text color="gray">Working directory: {process.cwd()}</Text>
-            <Text color="gray">Environment scanned: {snapshot ? '✔' : '✘'}</Text>
+            <Text color="gray">Environment scanned: {snapshot ? symbols.ok : symbols.error}</Text>
             <Text color="gray">Projects found: {projects.length}</Text>
           </>
         </Panel>

@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { ScrollableList } from '../components/ScrollableList.js';
 import { reduceListSelection } from '../navigation/listNavigation.js';
+import { glyphs } from '../themes/colors.js';
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -59,7 +60,7 @@ export const HistoryTab: React.FC = () => {
               return (
                 <Box key={i} flexDirection="row">
                   <Text inverse={i === selectedIdx} color={statusColor as any}>
-                    {i === selectedIdx ? '▶ ' : '  '}{formatTime(r.startTime)} {r.status.toUpperCase()}
+                    {i === selectedIdx ? `${glyphs.play} ` : '  '}{formatTime(r.startTime)} {r.status.toUpperCase()}
                   </Text>
                   <Text color="gray"> {formatDuration(r.durationMs)} {r.errorCount}E/{r.warningCount}W</Text>
                 </Box>

@@ -1,6 +1,6 @@
 {
-  "name": "lazybuilder",
-  "version": "0.1.0",
+  "name": "lazybuilder-cli",
+  "version": "0.1.1",
   "description": "TUI + CLI for diagnosing .NET / MSBuild / C++ / CMake build environments and executing builds. Designed as a tool for AI dev loops (Claude Code, Cursor, …) and as a human-friendly TUI.",
   "type": "module",
   "license": "MIT",

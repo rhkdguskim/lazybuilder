@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { reduceLogNavigation } from '../navigation/logNavigation.js';
+import { glyphs } from '../themes/colors.js';
 
 type LogFilter = 'all' | 'error' | 'warning' | 'stderr';
 const FILTERS: Array<{ label: string; value: LogFilter }> = [
@@ -100,7 +101,7 @@ export const LogsTab: React.FC = () => {
         </Box>
         <Box>
           <Text color={following ? 'green' : 'gray'}>
-            {following ? '⬇ Follow' : '⏸ Paused'}
+            {following ? glyphs.follow : glyphs.paused}
           </Text>
           <Text color="gray"> | {filtered.length}/{logEntries.length} lines</Text>
           <Text color={errorCount > 0 ? 'red' : 'gray'}> {errorCount}E</Text>

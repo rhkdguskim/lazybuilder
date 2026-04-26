@@ -5,7 +5,7 @@ import { ScrollableList } from '../components/ScrollableList.js';
 import { PageHeader, Panel } from '../components/index.js';
 import { reduceListSelection } from '../navigation/listNavigation.js';
 import type { Severity } from '../../domain/enums.js';
-import { severityColors, symbols } from '../themes/colors.js';
+import { glyphs, severityColors, symbols } from '../themes/colors.js';
 
 const FILTERS: Array<{ label: string; value: Severity | 'all' }> = [
   { label: 'All', value: 'all' },
@@ -76,7 +76,7 @@ export const DiagnosticsTab: React.FC = () => {
                     {isSelected && (
                       <Box flexDirection="column" paddingLeft={4}>
                         <Text color="gray" wrap="truncate">{item.description}</Text>
-                        <Text color="cyan" wrap="truncate">→ {item.suggestedAction}</Text>
+                        <Text color="cyan" wrap="truncate">{glyphs.action} {item.suggestedAction}</Text>
                       </Box>
                     )}
                   </Box>

@@ -2,6 +2,7 @@ import type { BuildProfile } from '../domain/models/BuildProfile.js';
 import type { BuildResult, BuildDiagnostic } from '../domain/models/BuildResult.js';
 import type { ProjectInfo } from '../domain/models/ProjectInfo.js';
 import type { EnvironmentSnapshot } from '../domain/models/EnvironmentSnapshot.js';
+import type { HardwareInfo } from '../domain/models/HardwareInfo.js';
 import type { BuildAdapter, ResolvedCommand } from '../infrastructure/adapters/BuildAdapter.js';
 import { DotnetAdapter } from '../infrastructure/adapters/DotnetAdapter.js';
 import { MsBuildAdapter } from '../infrastructure/adapters/MsBuildAdapter.js';
@@ -12,20 +13,23 @@ import { DevShellRunner, findDevShellPath, findBestInstallation } from '../infra
 import { MsBuildOutputParser } from '../infrastructure/parsers/MsBuildOutputParser.js';
 import { DotnetOutputParser } from '../infrastructure/parsers/DotnetOutputParser.js';
 import { CMakeOutputParser } from '../infrastructure/parsers/CMakeOutputParser.js';
+import { detectHardware } from '../infrastructure/system/HardwareDetector.js';
 import type { LogEntry } from '../domain/models/LogEntry.js';
 
 export class BuildService {
   private adapters: BuildAdapter[];
   private currentRunner: ProcessRunner | null = null;
   private logIndex = 0;
+  readonly hardware: HardwareInfo;
 
-  constructor(snapshot?: EnvironmentSnapshot) {
+  constructor(snapshot?: EnvironmentSnapshot, hardware?: HardwareInfo) {
     const msbuildPath = snapshot?.msbuild.selectedPath ?? undefined;
+    this.hardware = hardware ?? detectHardware();
     this.adapters = [
-      new CppMsBuildAdapter(msbuildPath),  // Check C++ first (more specific)
-      new DotnetAdapter(),
-      new MsBuildAdapter(msbuildPath),
-      new CMakeAdapter(),
+      new CppMsBuildAdapter(msbuildPath, this.hardware),  // Check C++ first (more specific)
+      new DotnetAdapter(this.hardware),
+      new MsBuildAdapter(msbuildPath, this.hardware),
+      new CMakeAdapter(this.hardware),
     ];
   }
 

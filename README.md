@@ -25,7 +25,7 @@ Terminal UI for diagnosing build environments and executing builds without Visua
 ### Recommended (npm — global)
 
 ```bash
-npm install -g lazybuilder
+npm install -g lazybuilder-cli
 lazybuilder           # launch the TUI
 ```
 
@@ -36,7 +36,7 @@ lazybuilder --check-update   # JSON: { updateAvailable, currentVersion, latestVe
 lazybuilder --update         # auto-update (npm or git, depending on install mode)
 
 # manual fallback:
-npm install -g lazybuilder@latest
+npm install -g lazybuilder-cli@latest
 ```
 
 ### From source (Windows)
