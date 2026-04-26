@@ -1,20 +1,27 @@
 import type { BuildProfile } from '../domain/models/BuildProfile.js';
-import type { BuildResult, BuildDiagnostic } from '../domain/models/BuildResult.js';
+import type { BuildResult } from '../domain/models/BuildResult.js';
 import type { ProjectInfo } from '../domain/models/ProjectInfo.js';
 import type { EnvironmentSnapshot } from '../domain/models/EnvironmentSnapshot.js';
 import type { HardwareInfo } from '../domain/models/HardwareInfo.js';
+import type { BuildMetric, BuildMetricStatus } from '../domain/models/BuildMetric.js';
 import type { BuildAdapter, ResolvedCommand } from '../infrastructure/adapters/BuildAdapter.js';
 import { DotnetAdapter } from '../infrastructure/adapters/DotnetAdapter.js';
 import { MsBuildAdapter } from '../infrastructure/adapters/MsBuildAdapter.js';
 import { CppMsBuildAdapter } from '../infrastructure/adapters/CppMsBuildAdapter.js';
 import { CMakeAdapter } from '../infrastructure/adapters/CMakeAdapter.js';
-import { ProcessRunner } from '../infrastructure/process/ProcessRunner.js';
+import { ProcessRunner, runCommand } from '../infrastructure/process/ProcessRunner.js';
 import { DevShellRunner, findDevShellPath, findBestInstallation } from '../infrastructure/process/DevShellRunner.js';
 import { MsBuildOutputParser } from '../infrastructure/parsers/MsBuildOutputParser.js';
 import { DotnetOutputParser } from '../infrastructure/parsers/DotnetOutputParser.js';
 import { CMakeOutputParser } from '../infrastructure/parsers/CMakeOutputParser.js';
 import { detectHardware } from '../infrastructure/system/HardwareDetector.js';
 import type { LogEntry } from '../domain/models/LogEntry.js';
+import { BuildIntelligenceService } from './BuildIntelligenceService.js';
+import { logger, errToLog } from '../infrastructure/logging/Logger.js';
+import { createHash } from 'node:crypto';
+import { hostname } from 'node:os';
+
+const buildLog = logger.child({ component: 'BuildService' });
 
 export class BuildService {
   private adapters: BuildAdapter[];
@@ -136,6 +143,19 @@ export class BuildService {
         source,
       });
 
+      const finish = (result: BuildResult): void => {
+        this.currentRunner = null;
+        resolve(result);
+        // Fire-and-forget: never block build success on metrics failure.
+        try {
+          recordBuildMetric(project, profile, snapshot, result).catch(err => {
+            buildLog.warn('build intelligence record failed', errToLog(err));
+          });
+        } catch (err) {
+          buildLog.warn('build intelligence schedule failed', errToLog(err));
+        }
+      };
+
       runner.on('stdout', (line: string) => {
         const diag = parser.feedLine(line);
         const entry = createEntry(line, 'stdout');
@@ -154,8 +174,7 @@ export class BuildService {
         onLogEntry(createEntry(`Build process error: ${err.message}`, 'stderr'));
         const endTime = new Date();
         const summary = parser.getSummary();
-        this.currentRunner = null;
-        resolve({
+        finish({
           profileId: profile.id,
           startTime,
           endTime,
@@ -172,8 +191,7 @@ export class BuildService {
       runner.on('exit', (code: number) => {
         const endTime = new Date();
         const summary = parser.getSummary();
-        this.currentRunner = null;
-        resolve({
+        finish({
           profileId: profile.id,
           startTime,
           endTime,
@@ -195,4 +213,81 @@ export class BuildService {
       this.currentRunner = null;
     }
   }
+}
+
+/**
+ * Build a {@link BuildMetric} from a completed run and persist it via
+ * {@link BuildIntelligenceService}. Resolves the git commit out-of-band; never
+ * throws — caller invokes via `.catch()`.
+ */
+async function recordBuildMetric(
+  project: ProjectInfo,
+  profile: BuildProfile,
+  snapshot: EnvironmentSnapshot,
+  result: BuildResult,
+): Promise<void> {
+  const projectId = sha1Hex(project.filePath).slice(0, 12);
+  const toolchainHash = sha1Hex(
+    JSON.stringify([
+      snapshot.dotnet.sdks.map(s => s.version).sort(),
+      snapshot.msbuild.selectedPath,
+      snapshot.cpp.toolsets.map(t => t.version).sort(),
+    ]),
+  ).slice(0, 12);
+
+  const env = process.env;
+  const pathShort = env['PATH']?.split(process.platform === 'win32' ? ';' : ':').slice(0, 3).join(';') ?? null;
+  const envHash = sha1Hex(
+    JSON.stringify({
+      INCLUDE: env['INCLUDE'] ?? null,
+      LIB: env['LIB'] ?? null,
+      PATH_short: pathShort,
+    }),
+  ).slice(0, 12);
+
+  const gitCommit = await safeGitCommit();
+
+  const metric: BuildMetric = {
+    schema: 'lazybuilder/metrics/v1',
+    ts: (result.endTime ?? new Date()).toISOString(),
+    kind: 'build',
+    projectId,
+    projectName: project.name,
+    configuration: profile.configuration,
+    platform: profile.platform,
+    exitCode: result.exitCode ?? -1,
+    status: toMetricStatus(result.status),
+    durationMs: result.durationMs,
+    errorCount: result.errorCount,
+    warningCount: result.warningCount,
+    gitCommit,
+    toolchainHash,
+    envHash,
+    hostname: hostname(),
+  };
+
+  await new BuildIntelligenceService().record(metric);
+}
+
+function sha1Hex(input: string): string {
+  return createHash('sha1').update(input).digest('hex');
+}
+
+function toMetricStatus(status: BuildResult['status']): BuildMetricStatus {
+  if (status === 'success' || status === 'failure' || status === 'cancelled') return status;
+  // 'idle' / 'running' should never reach a finalized BuildResult, but be defensive.
+  return 'failure';
+}
+
+async function safeGitCommit(): Promise<string | null> {
+  try {
+    const result = await runCommand('git', ['rev-parse', 'HEAD'], { timeout: 1000 });
+    if (result.exitCode === 0) {
+      const trimmed = result.stdout.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+  } catch {
+    // best-effort
+  }
+  return null;
 }
