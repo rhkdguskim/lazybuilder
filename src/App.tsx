@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Text, useApp, useInput, useStdout } from 'ink';
 import { TabBar } from './ui/components/TabBar.js';
-import { HelpBar } from './ui/components/HelpBar.js';
+import { KeyHints } from './ui/components/KeyHints.js';
 import { GlobalStatusBar } from './ui/components/GlobalStatusBar.js';
 import { ShortcutOverlay } from './ui/components/ShortcutOverlay.js';
+import { Toast } from './ui/components/Toast.js';
+import { LoadingState } from './ui/components/LoadingState.js';
 import { useTabNavigation } from './ui/hooks/useTabNavigation.js';
 import { useEnvironmentScan } from './ui/hooks/useEnvironmentScan.js';
 import { useProjectScan } from './ui/hooks/useProjectScan.js';
 import { useAppStore } from './ui/store/useAppStore.js';
 import { compactPath } from './ui/utils/text.js';
+import { theme } from './ui/themes/theme.js';
 import { DiagnosticsService } from './application/DiagnosticsService.js';
 import { UpdateChecker, type UpdateCheckResult } from './infrastructure/updater/UpdateChecker.js';
 
@@ -20,6 +23,8 @@ import { DiagnosticsTab } from './ui/tabs/DiagnosticsTab.js';
 import { LogsTab } from './ui/tabs/LogsTab.js';
 import { HistoryTab } from './ui/tabs/HistoryTab.js';
 import { SettingsTab } from './ui/tabs/SettingsTab.js';
+import { ToolchainModal } from './ui/components/ToolchainModal.js';
+import { useToolchain } from './ui/hooks/useToolchain.js';
 
 const diagnosticsService = new DiagnosticsService();
 
@@ -33,14 +38,18 @@ const App: React.FC = () => {
   const { projects, status: projStatus } = useProjectScan();
   const setDiagnostics = useAppStore(s => s.setDiagnostics);
   const buildSearchActive = useAppStore(s => s.buildSearchActive);
+  const pushNotification = useAppStore(s => s.pushNotification);
+  const dismissNotification = useAppStore(s => s.dismissNotification);
 
   // Update notification (background, non-blocking)
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
-  const [updateBannerVisible, setUpdateBannerVisible] = useState(false);
+  const [updateNotificationId, setUpdateNotificationId] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'updating' | 'done' | 'error'>('idle');
   const [updateManualCmd, setUpdateManualCmd] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [scanFrame, setScanFrame] = useState(0);
+  const toolchain = useToolchain();
+  const toolchainActive = toolchain.phase !== 'idle';
 
   // Background update check — does NOT block the main UI
   useEffect(() => {
@@ -49,42 +58,79 @@ const App: React.FC = () => {
     checker.check().then(result => {
       if (result && result.updateAvailable) {
         setUpdateInfo(result);
-        setUpdateBannerVisible(true);
+        const versionLine = result.mode === 'git-clone'
+          ? `${result.behindCount ?? 0} commit(s) behind`
+          : `${result.currentVersion} → ${result.latestVersion}`;
+        const id = pushNotification({
+          severity: 'info',
+          title: 'Update available',
+          detail: versionLine,
+          action: { key: 'U', label: 'Update · X dismiss' },
+        });
+        setUpdateNotificationId(id);
       }
     }).catch(() => {
       // Silently ignore update check failures
     });
-  }, []);
+  }, [pushNotification]);
 
   // Handle update action
   const performUpdate = () => {
     setUpdateStatus('updating');
+    if (updateNotificationId) dismissNotification(updateNotificationId);
+    const updatingId = pushNotification({
+      severity: 'info',
+      title: 'Updating…',
+      detail: updateInfo?.packageName ?? 'lazybuilder',
+    });
     const checker = new UpdateChecker();
     checker.performUpdate().then(outcome => {
+      dismissNotification(updatingId);
       if (outcome.success) {
         setUpdateStatus('done');
+        pushNotification({
+          severity: 'ok',
+          title: 'Update complete',
+          detail: 'Restarting…',
+          ttlMs: 2000,
+        });
         setTimeout(() => exit(), 2000);
       } else {
         setUpdateManualCmd(outcome.manualCommand ?? null);
         setUpdateStatus('error');
-        setTimeout(() => setUpdateBannerVisible(false), 8000);
+        pushNotification({
+          severity: 'danger',
+          title: 'Update failed',
+          detail: `Run manually: ${outcome.manualCommand ?? `npm install -g ${updateInfo?.packageName ?? 'lazybuilder'}@latest`}`,
+          ttlMs: 10000,
+        });
       }
     }).catch(() => {
+      dismissNotification(updatingId);
       setUpdateStatus('error');
-      setTimeout(() => setUpdateBannerVisible(false), 8000);
+      pushNotification({
+        severity: 'danger',
+        title: 'Update failed',
+        detail: updateManualCmd ?? 'See terminal for details',
+        ttlMs: 10000,
+      });
     });
   };
 
   // Global keybindings
   useInput((input, key) => {
+    // Toolchain modal owns input while open
+    if (toolchainActive) return;
+
     // Update banner interaction
-    if (updateBannerVisible && updateStatus === 'idle') {
+    if (updateNotificationId && updateStatus === 'idle') {
       if (input === 'u' || input === 'U') {
         performUpdate();
         return;
       }
       if (input === 'x' || input === 'X') {
-        setUpdateBannerVisible(false);
+        dismissNotification(updateNotificationId);
+        setUpdateNotificationId(null);
         return;
       }
     }
@@ -95,6 +141,10 @@ const App: React.FC = () => {
 
     if (input === '?') {
       setShowHelp(v => !v);
+      return;
+    }
+    if (input === 'i' && activeTab === 'diagnostics') {
+      toolchain.open();
       return;
     }
     if (input === 'q' && !key.ctrl) {
@@ -150,20 +200,27 @@ const App: React.FC = () => {
       <Box flexDirection="column" width="100%" height={termHeight} padding={1}>
         <Box flexDirection="row" flexShrink={0} overflow="hidden">
           <Box width={12} flexShrink={0}>
-            <Text bold color="cyan">LazyBuilder</Text>
+            <Text bold color={theme.color.accent.primary as any}>LazyBuilder</Text>
           </Box>
           <Box flexGrow={1} overflow="hidden">
-            <Text color="gray" wrap="truncate">{cwdLabel}</Text>
+            <Text color={theme.color.text.muted as any} wrap="truncate">{cwdLabel}</Text>
           </Box>
         </Box>
         <Box height={1} />
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1} overflow="hidden">
-          <Text bold color="cyan" wrap="truncate">Scanning Environment{scanDots}</Text>
+        <Box
+          flexDirection="column"
+          borderStyle={theme.border.style}
+          borderColor={theme.color.border.focused as any}
+          paddingX={2}
+          paddingY={1}
+          overflow="hidden"
+        >
+          <LoadingState
+            label="Scanning environment"
+            hint="Build tools and project inventory are being collected. Tabs unlock when this finishes."
+          />
           <Box height={1} />
-          <Text color="cyan">{scanBar}</Text>
-          <Box height={1} />
-          <Text color="gray" wrap="truncate">Build environment and project inventory are being collected.</Text>
-          <Text color="gray" wrap="truncate">Tabs will appear after the initial scan completes.</Text>
+          <Text color={theme.color.accent.primary as any}>{scanBar}{scanDots}</Text>
         </Box>
       </Box>
     );
@@ -174,43 +231,31 @@ const App: React.FC = () => {
       {/* Header */}
       <Box paddingX={1} flexDirection="row" flexShrink={0} overflow="hidden">
         <Box width={12} flexShrink={0}>
-          <Text bold color="cyan">LazyBuilder</Text>
+          <Text bold color={theme.color.accent.primary as any}>LazyBuilder</Text>
         </Box>
         <Box flexGrow={1} overflow="hidden">
-          <Text color="gray" wrap="truncate">{cwdLabel}</Text>
+          <Text color={theme.color.text.muted as any} wrap="truncate">{cwdLabel}</Text>
+        </Box>
+        <Box flexShrink={0}>
+          <Toast width={Math.max(40, Math.min(72, termWidth - 14))} />
         </Box>
       </Box>
-
-      {/* Update notification banner (non-blocking) */}
-      {updateBannerVisible && updateInfo && (
-        <Box paddingX={1} borderStyle="round" borderColor="yellow" marginX={1} flexShrink={0} overflow="hidden">
-          {updateStatus === 'idle' && (
-            <Text wrap="truncate">
-              <Text color="yellow" bold> Update available </Text>
-              <Text color="gray">
-                {updateInfo.mode === 'git-clone'
-                  ? `(${updateInfo.behindCount ?? 0} commit(s) behind) `
-                  : `(${updateInfo.currentVersion} → ${updateInfo.latestVersion}) `}
-              </Text>
-              <Text color="cyan" bold>[U]</Text><Text> Update </Text>
-              <Text color="gray" bold>[X]</Text><Text> Dismiss</Text>
-            </Text>
-          )}
-          {updateStatus === 'updating' && <Text color="yellow" wrap="truncate">Updating... please wait</Text>}
-          {updateStatus === 'done' && <Text color="green" wrap="truncate">Update complete. Restarting...</Text>}
-          {updateStatus === 'error' && (
-            <Text color="red" wrap="truncate">
-              Update failed. Run manually: <Text bold>{updateManualCmd ?? `npm install -g ${updateInfo.packageName}@latest`}</Text>
-            </Text>
-          )}
-        </Box>
-      )}
 
       {/* Tab Bar */}
       <TabBar tabs={tabs} activeTab={activeTab} />
 
       {/* Main Content — all tabs always mounted, only active one visible */}
       <Box flexGrow={1} flexShrink={1} flexDirection="column" overflowY="hidden">
+        {toolchainActive && toolchain.plan && (
+          <ToolchainModal
+            plan={toolchain.plan}
+            progress={toolchain.progress}
+            phase={toolchain.phase === 'idle' ? 'propose' : toolchain.phase}
+            onConfirm={toolchain.confirm}
+            onCancel={toolchain.cancel}
+            onClose={toolchain.close}
+          />
+        )}
         {showHelp && <ShortcutOverlay activeTab={activeTab} />}
         <Box display={!showHelp && activeTab === 'overview' ? 'flex' : 'none'} flexGrow={1} overflowY="hidden"><OverviewTab /></Box>
         <Box display={!showHelp && activeTab === 'environment' ? 'flex' : 'none'} flexGrow={1} overflowY="hidden"><EnvironmentTab /></Box>
@@ -224,8 +269,8 @@ const App: React.FC = () => {
 
       <GlobalStatusBar />
 
-      {/* Help Bar */}
-      <HelpBar items={helpItems} />
+      {/* Help Bar — global keys only, contextual hints live inside each tab */}
+      <KeyHints hints={helpItems} asFooter />
     </Box>
   );
 };
