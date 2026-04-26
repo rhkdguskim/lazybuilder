@@ -61,7 +61,12 @@ src/
 │       ├── environmentRules.ts
 │       └── index.ts
 │
+├── config/
+│   └── timeouts.ts             # central TIMEOUTS bucket — env-overridable via LAZYBUILDER_TIMEOUT_*
+│
 ├── infrastructure/
+│   ├── logging/
+│   │   └── Logger.ts           # NDJSON structured logger (trace..fatal), child bindings
 │   ├── process/
 │   │   ├── ProcessRunner.ts    # spawn + tree-kill, single seam for subprocess I/O
 │   │   └── DevShellRunner.ts   # vcvarsall/VsDevCmd .bat wrapping
@@ -100,11 +105,15 @@ src/
 │   └── DiagnosticsService.ts
 │
 └── ui/
-    ├── tabs/                          # 8 tabs (one .tsx each + lazygit-controls.test.tsx)
+    ├── tabs/                          # 8 tabs (one .tsx each)
+    │   └── build/                     # BuildTab decomposed: target list / settings / action bar /
+    │                                  # preview / output panel / FieldRow / DiagnosticPreview
+    │                                  # plus useBuildTargets + useBuildController hooks
     ├── components/                    # 12 reusable Ink components
     ├── hooks/                         # useTabNavigation, useEnvironmentScan, …
     ├── navigation/                    # pure reducers (only place with real tests today)
     ├── store/useAppStore.ts           # single Zustand store
+    ├── utils/                         # text + duration formatters
     └── themes/colors.ts
 ```
 
@@ -236,12 +245,45 @@ Once headless CLI ships, `package.json` will declare:
 
 ---
 
-## 9. Observability (planned)
+## 9. Observability
 
-- `Logger` port (no-op in TUI, NDJSON-to-file when `--debug`)
-- Path: `${LAZYBUILDER_HOME ?? ~/.lazybuilder}/logs/<isoTimestamp>.ndjson`
-- Redaction: PATH, USERNAME, hostname masked by default; opt out with `--no-redact`
-- Instrumented points: detector start/end, adapter resolve, ProcessRunner spawn/exit, UpdateChecker probe
+### 9.1 Status
+
+| Feature | Status |
+|---|---|
+| Structured NDJSON logger (`logger` in `src/infrastructure/logging/Logger.ts`) | ✅ shipped |
+| Daily-rotated default log file (`~/.lazybuilder/logs/lazybuilder-YYYYMMDD.ndjson`) | ✅ shipped |
+| Env-controlled level (`LAZYBUILDER_LOG_LEVEL`) | ✅ shipped |
+| Explicit file override (`LAZYBUILDER_LOG_FILE`) | ✅ shipped |
+| stderr mirroring (`LAZYBUILDER_LOG_STDERR=1`) | ✅ shipped |
+| Instrumented points: `ProcessRunner` spawn/exit/timeout, `EnvironmentService` per-detector failures, `uncaughtException`/`unhandledRejection` | ✅ shipped |
+| Adapter / UpdateChecker / Scanner instrumentation | 🚧 next pass |
+| PII redaction (PATH, USERNAME, hostname masking) | 🔭 future |
+| `--debug` CLI flag wiring | 🔭 future (P1) |
+
+### 9.2 Usage
+
+```ts
+import { logger } from '../infrastructure/logging/Logger.js';
+const log = logger.child({ component: 'MsBuildDetector' });
+log.info('detected msbuild', { path, version });
+log.warn('msbuild missing on PATH');
+log.error('parse failed', errToLog(err));
+```
+
+Each call appends one NDJSON line: `{ ts, level, msg, component: 'MsBuildDetector', ... }`. Defaults are TUI-safe (file-only); set `LAZYBUILDER_LOG_STDERR=1` only when you control stdout/stderr (CI, headless invocation).
+
+### 9.3 Log levels — when to use what
+
+| Level | Use for |
+|---|---|
+| `trace` | Per-line stream events, very high cardinality |
+| `debug` | Spawn arguments, parsed env keys, adapter command resolution |
+| `info` | Boot complete, scan result, build result summary |
+| `warn` | Detector timeout, parser blind spot, missing optional tool |
+| `error` | Recoverable failure that the user should see |
+| `fatal` | Process is exiting (`uncaughtException` only) |
+| `silent` | Disable all logging (test environments) |
 
 ---
 
@@ -265,6 +307,8 @@ Once headless CLI ships, `package.json` will declare:
 - React: function components, hooks. No class components.
 - Ink: avoid `useStdout().write` — use `<Text>`/`<Box>`. Direct stdout writes break the flicker-free stream.
 - Comments: only when *why* is non-obvious. The flicker logic in `main.tsx` is a good example. Most files should have zero comments.
+- **No hard-coded timeouts.** Use a `TIMEOUTS.<bucket>` from `src/config/timeouts.ts`. PR review will reject `{ timeout: 5000 }` in favor of `{ timeout: TIMEOUTS.QUICK_PROBE }`.
+- **No `console.*` in src/.** Use `logger.child({ component: '<X>' })` and one of the level methods. Exception: `bin/lazybuilder.js` shim is allowed to write directly to stderr for fatal pre-boot failures.
 
 ---
 

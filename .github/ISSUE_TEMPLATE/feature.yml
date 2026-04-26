@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest an enhancement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user-facing problem does this solve? Who is blocked today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: |
+        Concrete behavior, command shape, or UI change. Cite the relevant doc/code path
+        (e.g., docs/agents/cli-reference.md § 3) so we share vocabulary.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -2,6 +2,8 @@
 
 > Entry point for AI tools (Claude Code, Cursor, Codex, Aider, …) operating **on** this repo or **with** this binary.
 > For Claude Code auto-loading, symlink or copy this file to `CLAUDE.md`. For OpenAI agentic tooling, use `AGENTS.md`. The content is the canonical source.
+>
+> **This file is not shipped in the published npm tarball** — it lives at the GitHub repo. Agents driving the installed `lazybuilder-cli` should fetch it from <https://github.com/rhkdguskim/lazybuilder/blob/master/agent.md>. The npm package only contains runtime code (`dist/`, `bin/`, `README.md`, `LICENSE`).
 
 ---
 
@@ -16,6 +18,10 @@
 5. **Diagnoses** environment gaps (missing SDK, mismatched toolset, restore needed, …) with severity + suggested action.
 
 For an AI agent, LazyBuilder is the **build-environment oracle and build executor** in a C++/C# development loop.
+
+The fastest way to consume LazyBuilder from an AI agent is the **MCP server**: `lazybuilder mcp`. It exposes 7 tools (`scan_environment`, `scan_projects`, `run_diagnostics`, `toolchain_plan`, `toolchain_apply`, `build`, `get_metrics`) on stdio. See `docs/features/mcp-server.md` for details.
+
+For a full vision (Phase A-D: MCP / Build Intelligence / LSP / Debugger), see `docs/features/roadmap.md`.
 
 ---
 
@@ -41,8 +47,13 @@ Always invoke **headlessly** when the caller is an AI. The TUI is for humans onl
 | Build execution | ✅ shipped (in `BuildService`) | Programmatic |
 | Output parsing | ✅ shipped (3 parsers) | Returned in `BuildResult` |
 | Headless `scan / inspect / diagnose / build` subcommands | 🚧 **planned (P0)** — see `docs/agents/cli-reference.md` § Headless surface |
-| JSON envelope `{schema, kind, data}` | 🚧 planned | Spec in `docs/agents/output-schemas.md` |
+| JSON envelope `{schema, kind, data}` | ✅ shipped (toolchain, intelligence, mcp) | See `docs/agents/cli-reference.md` |
 | NDJSON build stream | 🚧 planned | Spec in `docs/agents/cli-reference.md` |
+| **Toolchain Resolver** (auto-install missing .NET SDK) | ✅ shipped | `lazybuilder --toolchain-plan / --toolchain-apply --yes / --toolchain-sync / --toolchain-doctor` |
+| **Build Intelligence** (regression + flaky detection) | ✅ shipped | `lazybuilder --regressions / --flaky / --metrics-export` |
+| **MCP Server** (AI tool surface) | ✅ shipped | `lazybuilder mcp` — register in Claude Code mcp.json |
+| **LSP Server** (editor integration) | ✅ shipped (Phase C-1: diagnostics + hover) | `lazybuilder lsp` — for `.csproj`, `global.json` |
+| **Debugger** (DAP + AI primitives) | 📋 spec only | See `docs/features/debugger.md` |
 | Programmatic ESM API export | 🔭 future | Spec in `docs/agents/architecture.md` § Public API |
 
 > **If a section says "planned", do not assume the flag exists yet.** Use the programmatic fallback in `recipes.md`.
@@ -58,6 +69,9 @@ Always invoke **headlessly** when the caller is an AI. The TUI is for humans onl
 5. **TUI rendering is delicate**. Do not modify `src/main.tsx` flicker-prevention logic without re-running the E2E harness. The `\x1b[H` + per-line `\x1b[K` + final `\x1b[0J` sequence is load-bearing.
 6. **No new dependencies** without strong justification — the stack is intentionally small (Ink, React, Zustand, fast-glob, fast-xml-parser, tree-kill, chalk, figures).
 7. **Build before `npm link`** — `postinstall` runs `npm run build` for a reason. Never publish or link without `dist/` populated.
+8. **Timeouts use `TIMEOUTS`** from `src/config/timeouts.ts`. Never hard-code `{ timeout: <number> }` — pick a named bucket (`QUICK_PROBE`, `TOOL_VERSION`, `TOOL_LIST`, `NETWORK_READ`, `DEVSHELL_INIT`, `GIT_PULL`, `HEAVY_INSTALL`, `DETECTOR_BUDGET`, `REGISTRY_PROBE`) so operators can override via `LAZYBUILDER_TIMEOUT_<KEY>` env vars without recompiling.
+9. **Logging goes through the `logger`** in `src/infrastructure/logging/Logger.ts`. Use `logger.child({ component: 'X' })` once per module; never `console.*` outside `bin/lazybuilder.js` (the TUI takes over stdout/stderr). Logs are NDJSON and land in `~/.lazybuilder/logs/lazybuilder-YYYYMMDD.ndjson` by default — see § 9 for env vars.
+10. **Detectors must be self-healing**. Wrap any new detector in `EnvironmentService.scanWithDiagnostics()` via `runDetector()` so a single hung tool cannot block boot. Failures surface as `DetectorFailure[]`, not exceptions.
 
 ---
 
@@ -151,6 +165,56 @@ When this doc and the code disagree, **the code wins**. The authoritative source
 - Shapes: `src/domain/models/*.ts`
 - Enums: `src/domain/enums.ts`
 - Service contracts: `src/application/*.ts`
+- Timeouts: `src/config/timeouts.ts`
+- Logger: `src/infrastructure/logging/Logger.ts`
 - CLI behavior: `src/main.tsx` + `bin/lazybuilder.js` (today) → `src/cli/` (planned headless)
 
 Update this file and the docs in the **same PR** as any behavior change. PRs that change behavior without doc updates will be rejected by review.
+
+---
+
+## 9. Operator knobs (env vars)
+
+These let an agent or CI runner tune runtime behavior **without** rebuilding the binary. All are optional; defaults are tuned for "fast probe on a developer laptop".
+
+### 9.1 Logging
+
+| Var | Effect | Default |
+|---|---|---|
+| `LAZYBUILDER_LOG_LEVEL` | `trace \| debug \| info \| warn \| error \| fatal \| silent` | `info` |
+| `LAZYBUILDER_LOG_FILE` | Explicit log file path; takes precedence over default location | `~/.lazybuilder/logs/lazybuilder-YYYYMMDD.ndjson` |
+| `LAZYBUILDER_LOG_STDERR` | `1` to also mirror logs to stderr (TUI-unfriendly; use only outside the TUI) | off |
+
+Each line is one NDJSON object: `{ ts, level, msg, component, ... }`. Grep / `jq` over the file when triaging.
+
+### 9.2 Per-bucket timeouts
+
+Override any value in `TIMEOUTS` (see `src/config/timeouts.ts`) via `LAZYBUILDER_TIMEOUT_<KEY>`. Useful on slow CI runners or hung-tool probes:
+
+| Env var | Bucket | Default (ms) | Used by |
+|---|---|---|---|
+| `LAZYBUILDER_TIMEOUT_QUICK_PROBE` | `QUICK_PROBE` | 5 000 | `--version`, `where`/`which`, `git rev-parse` |
+| `LAZYBUILDER_TIMEOUT_TOOL_VERSION` | `TOOL_VERSION` | 10 000 | dotnet/msbuild/npm view |
+| `LAZYBUILDER_TIMEOUT_TOOL_LIST` | `TOOL_LIST` | 15 000 | `dotnet workload list`, `vswhere` |
+| `LAZYBUILDER_TIMEOUT_NETWORK_READ` | `NETWORK_READ` | 15 000 | `git fetch` |
+| `LAZYBUILDER_TIMEOUT_DEVSHELL_INIT` | `DEVSHELL_INIT` | 30 000 | vcvarsall / VsDevCmd warm-up |
+| `LAZYBUILDER_TIMEOUT_GIT_PULL` | `GIT_PULL` | 60 000 | git-mode self-update |
+| `LAZYBUILDER_TIMEOUT_HEAVY_INSTALL` | `HEAVY_INSTALL` | 180 000 | `npm install`, `npm run build` |
+| `LAZYBUILDER_TIMEOUT_DETECTOR_BUDGET` | `DETECTOR_BUDGET` | 20 000 | per-detector ceiling in `EnvironmentService` |
+| `LAZYBUILDER_TIMEOUT_REGISTRY_PROBE` | `REGISTRY_PROBE` | 3 000 | per-key Windows registry probes |
+
+Invalid (non-numeric or ≤ 0) values are ignored — fallback wins.
+
+### 9.3 Boot resilience contract
+
+`EnvironmentService.scanWithDiagnostics()` runs every detector inside `runDetector(name, fn, DETECTOR_BUDGET)`:
+
+- Each detector has a hard time budget; exceeding it produces `DetectorFailure { reason: 'timeout' }`, never a stuck UI.
+- Other detectors continue regardless. Boot is **never** blocked by one bad tool.
+- Failures are returned alongside the snapshot:
+  ```ts
+  const { snapshot, failures } = await new EnvironmentService().scanWithDiagnostics();
+  ```
+- Surface `failures[]` to the user in the Diagnostics tab (planned) or `diagnose --json` output (planned, P0).
+
+The legacy `scan(): Promise<EnvironmentSnapshot>` is preserved for callers that don't care about partial failures, but new code should prefer `scanWithDiagnostics()`.

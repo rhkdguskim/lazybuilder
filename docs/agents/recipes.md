@@ -173,15 +173,33 @@ import { ProjectScanService }    from './dist/application/ProjectScanService.js'
 import { DiagnosticsService }    from './dist/application/DiagnosticsService.js';
 import { BuildService }          from './dist/application/BuildService.js';
 
-const env       = await new EnvironmentService().scan();
+// Prefer scanWithDiagnostics() to also see per-detector failures.
+// .scan() is preserved for callers that don't need failure surface.
+const { snapshot: env, failures } = await new EnvironmentService().scanWithDiagnostics();
 const scan      = await new ProjectScanService().scan(process.cwd());
 const items     = new DiagnosticsService().analyze(env, scan.projects);
 
-// agent envelope — wrap before piping back to the model
+// agent envelope — wrap before piping back to the model.
+// Fold detector failures into diagnostics so the model sees them in one place.
+const detectorDiagnostics = failures.map(f => ({
+  code: 'DETECTOR_' + f.reason.toUpperCase(),
+  severity: 'warning' as const,
+  title: `${f.detector} detector ${f.reason}`,
+  detail: `${f.message} (took ${f.durationMs}ms)`,
+  suggestedAction: f.reason === 'timeout'
+    ? `Increase LAZYBUILDER_TIMEOUT_DETECTOR_BUDGET or fix the underlying tool`
+    : 'Check tool installation and rerun',
+}));
+
 process.stdout.write(JSON.stringify({
   schema: 'lazybuilder/v1',
   kind:   'DiagnoseReport',
-  data:   { env, projects: scan.projects, solutions: scan.solutions, diagnostics: items },
+  data:   {
+    env,
+    projects: scan.projects,
+    solutions: scan.solutions,
+    diagnostics: [...items, ...detectorDiagnostics],
+  },
 }));
 ```
 

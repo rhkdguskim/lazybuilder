@@ -12,7 +12,7 @@ Terminal UI for diagnosing build environments and executing builds without Visua
 - **Log Viewer**: Filtered log output with error/warning parsing and summary
 - **Auto Update**: Checks npm registry (or git origin if cloned) on startup
 - **Cross-platform**: Windows primary, Linux/macOS partial support
-- **AI-Tool Ready**: Headless flags + JSON envelope contract — see [`agent.md`](agent.md)
+- **AI-Tool Ready**: Headless flags + JSON envelope contract — see [`agent.md`](https://github.com/rhkdguskim/lazybuilder/blob/master/agent.md) and [`docs/agents/`](https://github.com/rhkdguskim/lazybuilder/tree/master/docs/agents) on GitHub
 
 ## Requirements
 
@@ -140,6 +140,17 @@ src/
 ├── application/     # Service orchestration
 └── ui/              # React/Ink components, hooks, store
 ```
+
+## Documentation
+
+Agent integration guides and architecture docs live in the GitHub repo, not the npm tarball:
+
+- [`agent.md`](https://github.com/rhkdguskim/lazybuilder/blob/master/agent.md) — entry point for AI agents
+- [`docs/agents/quickstart.md`](https://github.com/rhkdguskim/lazybuilder/blob/master/docs/agents/quickstart.md)
+- [`docs/agents/cli-reference.md`](https://github.com/rhkdguskim/lazybuilder/blob/master/docs/agents/cli-reference.md)
+- [`docs/agents/recipes.md`](https://github.com/rhkdguskim/lazybuilder/blob/master/docs/agents/recipes.md)
+- [`docs/agents/harness-integration.md`](https://github.com/rhkdguskim/lazybuilder/blob/master/docs/agents/harness-integration.md)
+- [`docs/agents/architecture.md`](https://github.com/rhkdguskim/lazybuilder/blob/master/docs/agents/architecture.md)
 
 ## License
 

@@ -103,16 +103,35 @@ import { EnvironmentService } from 'lazybuilder/dist/application/EnvironmentServ
 import { ProjectScanService } from 'lazybuilder/dist/application/ProjectScanService.js';
 import { DiagnosticsService } from 'lazybuilder/dist/application/DiagnosticsService.js';
 
-const env = await new EnvironmentService().scan();
+// scanWithDiagnostics() also returns per-detector failures so a single
+// hung tool surfaces as a structured warning instead of a stuck process.
+const { snapshot: env, failures } = await new EnvironmentService().scanWithDiagnostics();
 const { projects, solutions } = await new ProjectScanService().scan(process.cwd());
 const diagnostics = new DiagnosticsService().analyze(env, projects);
 
 process.stdout.write(JSON.stringify({
   schema: 'lazybuilder/v1',
   kind: 'DiagnoseReport',
-  data: { env, projects, solutions, diagnostics },
+  data: { env, projects, solutions, diagnostics, detectorFailures: failures },
 }));
 ```
+
+## Tuning timeouts and logging without rebuilding
+
+Set env vars to control runtime behavior — useful when running on slow CI:
+
+```bash
+# Slow CI runner — bump the per-detector budget
+LAZYBUILDER_TIMEOUT_DETECTOR_BUDGET=60000 lazybuilder diagnose --json
+
+# Triage: capture verbose logs to a file
+LAZYBUILDER_LOG_LEVEL=debug LAZYBUILDER_LOG_FILE=/tmp/lazy.ndjson lazybuilder
+
+# Inspect what happened
+jq -c 'select(.level=="warn" or .level=="error")' /tmp/lazy.ndjson
+```
+
+Full env reference in [`cli-reference.md`](cli-reference.md) § 5.
 
 > The `lazybuilder` package does not yet declare `exports` for these paths. Either run from inside the cloned repo, or vendor the dist. Recipe in `recipes.md` § "Programmatic fallback".
 

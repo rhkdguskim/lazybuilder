@@ -16,6 +16,15 @@ lazybuilder --version, -v         # ✅ prints version, exits 0
 lazybuilder --help, -h            # ✅ prints summary, exits 0
 lazybuilder --check-update        # ✅ JSON envelope `UpdateCheck`, exits 0
 lazybuilder --update              # ✅ JSON envelope `UpdateResult`, runs npm/git update
+lazybuilder --toolchain-plan      # ✅ JSON envelope `ToolchainPlan`, exits 0
+lazybuilder --toolchain-apply     # ✅ JSON envelope `ToolchainResult`, requires `--yes`
+lazybuilder --toolchain-sync      # ✅ JSON envelope `ToolchainResult`, applies plan from global.json
+lazybuilder --toolchain-doctor    # ✅ JSON envelope `ToolchainDoctor`, exits 0/1
+lazybuilder --regressions         # ✅ JSON envelope `BuildIntelligenceReport` (regressions only)
+lazybuilder --flaky               # ✅ JSON envelope `BuildIntelligenceReport` (flaky only)
+lazybuilder --metrics-export      # ✅ NDJSON or JSON envelope `BuildMetrics`
+lazybuilder mcp                   # ✅ stdio MCP server for AI agents
+lazybuilder lsp                   # ✅ stdio LSP server for editors
 lazybuilder --help <subcommand>   # 🚧 prints subcommand help
 ```
 
@@ -195,16 +204,176 @@ These are **stable**. Adding a new code is allowed (e.g., 6, 7); reusing or repu
 
 ## 5. Environment variables
 
+### 5.1 Agent / mode
+
 | Var | Effect |
 |---|---|
 | `LAZYBUILDER_AGENT=1` | Force agent mode (JSON, no update check, no TUI) |
 | `LAZYBUILDER_HOME` | Override config dir (default: `~/.lazybuilder`) |
-| `LAZYBUILDER_LOG_LEVEL` | Same as `--log-level` |
 | `LAZYBUILDER_NO_UPDATE_CHECK=1` | Skip update probe |
 | `LAZYBUILDER_SCHEMA` | Default schema version |
 | `CI` | Treated as agent mode |
 | `NO_COLOR` | Strip ANSI colors |
 | `LAZYBUILDER_DEV_SHELL_DEBUG=1` | Print the generated `.bat` on stderr |
+
+### 5.2 Logging (✅ shipped)
+
+| Var | Effect | Default |
+|---|---|---|
+| `LAZYBUILDER_LOG_LEVEL` | `trace \| debug \| info \| warn \| error \| fatal \| silent` | `info` |
+| `LAZYBUILDER_LOG_FILE` | Explicit log file path | `~/.lazybuilder/logs/lazybuilder-YYYYMMDD.ndjson` |
+| `LAZYBUILDER_LOG_STDERR` | `1` to mirror logs to stderr (do not enable in TUI mode) | off |
+
+Logs are NDJSON: `{ ts, level, msg, component, ... }`. One line per event. Use `jq` / `grep` for triage.
+
+### 5.3 Timeout overrides (✅ shipped)
+
+Every named bucket in `src/config/timeouts.ts` accepts an env override `LAZYBUILDER_TIMEOUT_<KEY>` (milliseconds, integer > 0). Useful for slow CI runners:
+
+| Env var | Default (ms) | Used by |
+|---|---|---|
+| `LAZYBUILDER_TIMEOUT_QUICK_PROBE` | 5 000 | `--version` / `where` / `which` / `git rev-parse` |
+| `LAZYBUILDER_TIMEOUT_TOOL_VERSION` | 10 000 | dotnet/msbuild/npm view |
+| `LAZYBUILDER_TIMEOUT_TOOL_LIST` | 15 000 | `dotnet workload list`, `vswhere` |
+| `LAZYBUILDER_TIMEOUT_NETWORK_READ` | 15 000 | `git fetch` |
+| `LAZYBUILDER_TIMEOUT_DEVSHELL_INIT` | 30 000 | vcvarsall / VsDevCmd |
+| `LAZYBUILDER_TIMEOUT_GIT_PULL` | 60 000 | git-mode self-update |
+| `LAZYBUILDER_TIMEOUT_HEAVY_INSTALL` | 180 000 | `npm install`, `npm run build` |
+| `LAZYBUILDER_TIMEOUT_DETECTOR_BUDGET` | 20 000 | per-detector ceiling in `EnvironmentService` |
+| `LAZYBUILDER_TIMEOUT_REGISTRY_PROBE` | 3 000 | per-key Windows registry reads |
+
+Invalid values (non-numeric or ≤ 0) silently fall back to the default.
+
+---
+
+## 5b. Toolchain Resolver (Windows + .NET, MVP)
+
+Headless surface for the `Toolchain Resolver` feature. See `docs/features/toolchain-resolver.md` for the full spec.
+
+### `--toolchain-plan`     ✅ shipped
+
+Resolves missing .NET SDKs / runtimes / workloads from the current `EnvironmentSnapshot` + project scan and prints an `InstallPlan`. **No installation occurs.**
+
+```bash
+lazybuilder --toolchain-plan [--scope=user|machine] [--update-global-json] [--cwd=<path>]
+```
+
+| Output kind | `ToolchainPlan` (`{ ok, plan }`) |
+|---|---|
+| Default exit | 0 (always, even when nothing is missing) |
+| Idempotent | Yes |
+
+### `--toolchain-apply`     ✅ shipped
+
+Generates the same plan, then **executes** it. Requires `--yes` for non-interactive use (returns exit 2 otherwise).
+
+```bash
+lazybuilder --toolchain-apply --yes [--scope=user|machine]
+                              [--continue-on-error] [--update-global-json]
+                              [--dry-run] [--cwd=<path>]
+```
+
+| Output kind | `ToolchainResult` (`{ ok, result }`) |
+|---|---|
+| Default exit | 0 on success, 1 on failure, 2 if confirmation missing |
+| Side effects | Downloads `dotnet-install.ps1` (cached 24h), runs it for each step. May write to user PATH. May write `global.json`. |
+| UAC | Only when `--scope=machine` |
+
+`--dry-run` returns the plan envelope (`ToolchainPlan` with `dryRun: true`) without executing.
+
+### `--toolchain-sync`     ✅ shipped
+
+Re-scans, builds a plan from `global.json`, and applies it. Designed for new-machine bootstrap.
+
+```bash
+lazybuilder --toolchain-sync [--scope=user|machine] [--continue-on-error] [--update-global-json]
+```
+
+### `--toolchain-doctor`     ✅ shipped
+
+Diagnoses gaps without installing. Same data as `--toolchain-plan` but flattened to issues with suggested actions.
+
+```bash
+lazybuilder --toolchain-doctor [--scope=user|machine]
+```
+
+| Output kind | `ToolchainDoctor` (`{ ok, issues[] }`) |
+|---|---|
+| Exit | 0 when no gaps, 1 when gaps exist |
+
+---
+
+## 5c. Build Intelligence (Phase B)
+
+Persists a build metric on every `BuildService.execute()` to `~/.lazybuilder/metrics-YYYYMMDD.ndjson`. Computes regressions (EWMA + 3σ on duration/errors/warnings) and flaky builds (mixed success/failure on identical input dimensions).
+
+### `--regressions [--days=N] [--project=<id>]`     ✅ shipped
+
+Returns recent regressions in a `BuildIntelligenceReport` envelope.
+
+```jsonc
+{ "schema": "lazybuilder/v1", "kind": "BuildIntelligenceReport",
+  "data": { "ok": true, "windowDays": 7, "totalBuilds": 47,
+            "regressions": [...], "flaky": [] } }
+```
+
+### `--flaky [--days=N] [--project=<id>]`     ✅ shipped
+
+Same envelope, populated `flaky[]` only.
+
+### `--metrics-export [--format=ndjson|json] [--since=ISO8601]`     ✅ shipped
+
+- `ndjson` (default) — one `BuildMetric` per line on stdout
+- `json` — single envelope `{ kind: "BuildMetrics", data: { metrics: BuildMetric[] } }`
+
+See [`features/build-intelligence.md`](../features/build-intelligence.md) for schema, algorithm, and integration details.
+
+---
+
+## 5d. MCP Server (Phase A)
+
+```bash
+lazybuilder mcp
+```
+
+Stdio Model Context Protocol server. Registers 7 tools:
+
+| Tool | Purpose |
+|---|---|
+| `scan_environment` | Wraps `EnvironmentService.scan()` |
+| `scan_projects` | Wraps `ProjectScanService.scan(cwd?)` |
+| `run_diagnostics` | Wraps `DiagnosticsService.analyze()` |
+| `toolchain_plan` | Wraps `ToolchainService.plan()` |
+| `toolchain_apply` | Wraps `ToolchainService.apply()` — requires `confirmedSteps[]` |
+| `build` | Wraps `BuildService.execute()` (logs buffered, returned in result) |
+| `get_metrics` | Wraps `BuildIntelligenceService.report()` (guarded dynamic import) |
+
+Register in Claude Code (`~/.claude/mcp.json`):
+```jsonc
+{ "mcpServers": { "lazybuilder": { "command": "lazybuilder", "args": ["mcp"] } } }
+```
+
+stdout is reserved for MCP RPC. Logs go to file (or stderr with `LAZYBUILDER_LOG_STDERR=1`).
+
+See [`features/mcp-server.md`](../features/mcp-server.md) for tool input schemas and permission model.
+
+---
+
+## 5e. LSP Server (Phase C-1)
+
+```bash
+lazybuilder lsp
+```
+
+Stdio Language Server Protocol server. Phase C-1 capabilities:
+
+- `textDocument/diagnostic` (push + pull) for `.csproj`, `.fsproj`, `.vbproj`, `global.json`
+- `textDocument/hover` for `<TargetFramework>`, `<PlatformToolset>`, `<WindowsTargetPlatformVersion>`, global.json `version`/`rollForward`
+- 5-minute per-folder context cache; `workspace/didChangeConfiguration` invalidates cache
+
+VS Code (extension) / Neovim (lspconfig) / Helix examples in [`features/lsp-server.md`](../features/lsp-server.md).
+
+stdout is reserved for LSP RPC. Logs go to file.
 
 ---
 

@@ -28,3 +28,6 @@ npm-debug.log*
 
 # OMC session state
 .omc/
+
+# Generated mock workspace for TUI dogfooding (recreate via scripts/generate-mocks.mjs)
+mocks/

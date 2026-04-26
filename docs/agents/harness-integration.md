@@ -208,7 +208,9 @@ To make LazyBuilder dependable at scale, we need 4 properties on top of the head
 - A `--snapshot` mode that emits **a single self-describing JSON** of env+projects+result. Replayable in a clean container with `--from-snapshot <file>` so support tickets stop being lossy. (🔭 future)
 
 ### 7.3 Observability
-- `--debug` writes NDJSON to `~/.lazybuilder/logs/<ts>.ndjson` with PII redaction (PATH, USERNAME, hostname). Single attachment for any bug report. Spec in `architecture.md` § Observability.
+- ✅ **Shipped**: structured NDJSON logger (`src/infrastructure/logging/Logger.ts`). Defaults to `~/.lazybuilder/logs/lazybuilder-YYYYMMDD.ndjson`. Toggle level with `LAZYBUILDER_LOG_LEVEL=debug`. Per-detector failures and `runCommand` timeouts are already instrumented.
+- 🚧 **Next**: PII redaction (mask PATH, USERNAME, hostname before write); `--debug` flag wiring to flip log level inline; adapter / scanner / UpdateChecker instrumentation pass.
+- For bug reports today, attach the latest line range from the active log file. `tail -200 ~/.lazybuilder/logs/lazybuilder-$(date +%Y%m%d).ndjson` is the canonical capture.
 
 ### 7.4 Multi-tenant safety
 - Profiles & history under `LAZYBUILDER_HOME` (defaults to `~/.lazybuilder`), no global writes outside that dir. Already correct in design — codify in tests.
@@ -237,20 +239,24 @@ Snapshot env at session start. Re-snapshot when user reports "now it's broken." 
 
 ## 9. What to build next (P0 → P2)
 
-| Priority | Item | Why |
-|---|---|---|
-| **P0** | Headless `scan / inspect / diagnose / build / self-check` subcommands | Unblocks every surface above |
-| **P0** | JSON envelope `{schema,kind,data}` everywhere | Locks the contract |
-| **P0** | NDJSON build streaming | Enables real-time agent reactions |
-| **P0** | Exit codes locked (`output-schemas.md` § 4) | Bot reliability |
-| **P0** | Test harness (Ports & Fakes) | See `architecture.md` § Test harness |
-| P1 | `--snapshot` / `--from-snapshot` | Reproducible support |
-| P1 | `--debug` NDJSON log | Triage agent input |
-| P1 | Profiles disk-backed | R7 |
-| P1 | `history` subcommand | Triage |
-| P2 | Programmatic ESM exports (`exports` map in `package.json`) | Library use |
-| P2 | `lazybuilder watch` (auto-rebuild) | Edit-Verify loop without tool re-spawn |
-| P2 | MCP server wrapper | Direct tool registration with MCP-aware agents |
+| Priority | Item | Status | Why |
+|---|---|---|---|
+| **P0** | Headless `scan / inspect / diagnose / build / self-check` subcommands | 🚧 in progress | Unblocks every surface above |
+| **P0** | JSON envelope `{schema,kind,data}` everywhere | 🚧 planned | Locks the contract |
+| **P0** | NDJSON build streaming | 🚧 planned | Enables real-time agent reactions |
+| **P0** | Exit codes locked (`output-schemas.md` § 4) | 🚧 planned | Bot reliability |
+| **P0** | Test harness (Ports & Fakes) | 🚧 planned | See `architecture.md` § Test harness |
+| **P0** | Centralized `TIMEOUTS` + env overrides | ✅ shipped | Operators can tune CI without rebuild |
+| **P0** | Structured NDJSON logger + per-detector failure surface | ✅ shipped | Triage no longer guesswork |
+| **P0** | `EnvironmentService.scanWithDiagnostics()` resilience contract | ✅ shipped | One bad tool can't block boot |
+| P1 | `--snapshot` / `--from-snapshot` | 🔭 future | Reproducible support |
+| P1 | `--debug` flag wiring to logger | 🔭 future | Triage agent input |
+| P1 | PII redaction in logs (PATH, USERNAME, hostname) | 🔭 future | Safe to attach to tickets |
+| P1 | Profiles disk-backed | 🔭 future | R7 |
+| P1 | `history` subcommand | 🔭 future | Triage |
+| P2 | Programmatic ESM exports (`exports` map in `package.json`) | 🔭 future | Library use |
+| P2 | `lazybuilder watch` (auto-rebuild) | 🔭 future | Edit-Verify loop without tool re-spawn |
+| P2 | MCP server wrapper | 🔭 future | Direct tool registration with MCP-aware agents |
 
 P0 set is what turns LazyBuilder from a TUI into a tool. Everything else is leverage.
 
