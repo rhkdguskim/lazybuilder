@@ -7,3 +7,8 @@ export * from './DiagnosticItem.js';
 export * from './LogEntry.js';
 export * from './EnvironmentSnapshot.js';
 export * from './HardwareInfo.js';
+export * from './ToolchainRequirement.js';
+export * from './InstallPlan.js';
+export * from './InstallProgress.js';
+export * from './InstallResult.js';
+export * from './BuildMetric.js';
