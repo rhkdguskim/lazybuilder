@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { useAppStore } from '../store/useAppStore.js';
+import { useAppStore, type BuildTargetFilter } from '../store/useAppStore.js';
 import { useBuild } from '../hooks/useBuild.js';
 import { ProgressPanel } from '../components/ProgressPanel.js';
 import { ScrollableList } from '../components/ScrollableList.js';
 import { PageHeader, Panel } from '../components/index.js';
-import type { ProjectInfo, BuildConfiguration, SolutionInfo } from '../../domain/models/ProjectInfo.js';
+import { glyphs, legacyWindowsConsole } from '../themes/colors.js';
+import { compactPath } from '../utils/text.js';
+import type { ProjectInfo, SolutionInfo } from '../../domain/models/ProjectInfo.js';
 import type { BuildProfile } from '../../domain/models/BuildProfile.js';
 import type { BuildSystem } from '../../domain/enums.js';
 
@@ -15,6 +17,27 @@ type SettingField = 'configuration' | 'platform' | 'verbosity' | 'parallel' | 'd
 const FOCUS_AREAS: FocusArea[] = ['targets', 'settings', 'action', 'output'];
 const SETTING_FIELDS: SettingField[] = ['configuration', 'platform', 'verbosity', 'parallel', 'devshell'];
 const VERBOSITIES = ['quiet', 'minimal', 'normal', 'detailed', 'diagnostic'] as const;
+const TARGET_FILTERS: Array<{ value: BuildTargetFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'solutions', label: 'Solutions' },
+  { value: 'projects', label: 'Projects' },
+  { value: 'dotnet', label: '.NET' },
+  { value: 'msbuild', label: 'MSBuild' },
+  { value: 'cmake', label: 'CMake' },
+  { value: 'cpp', label: 'C++' },
+];
+
+type BuildTarget = {
+  kind: 'solution' | 'project';
+  label: string;
+  project: ProjectInfo | null;
+  solution: SolutionInfo | null;
+  path: string;
+  buildSystem: BuildSystem;
+  projectType?: ProjectInfo['projectType'];
+  solutionType?: SolutionInfo['solutionType'];
+  searchable: string;
+};
 
 const isTTY = !!process.stdin.isTTY;
 
@@ -27,24 +50,43 @@ export const BuildTab: React.FC = () => {
 
   // Build targets: solutions + standalone projects
   const targets = useMemo(() => {
-    const list: Array<{ label: string; project: ProjectInfo | null; solution: SolutionInfo | null; path: string; buildSystem: BuildSystem }> = [];
+    const list: BuildTarget[] = [];
 
     for (const sln of solutions) {
       list.push({
+        kind: 'solution',
         label: `${sln.name}.sln (${sln.solutionType}, ${sln.projects.length} proj)`,
         project: null,
         solution: sln,
         path: sln.filePath,
         buildSystem: sln.solutionType === 'csharp' ? 'dotnet' : 'msbuild',
+        solutionType: sln.solutionType,
+        searchable: [
+          sln.name,
+          sln.filePath,
+          sln.solutionType,
+          ...sln.projects.map(project => `${project.name} ${project.language} ${project.projectType}`),
+        ].join(' ').toLowerCase(),
       });
     }
     for (const proj of projects.filter(p => !p.solutionPath)) {
       list.push({
+        kind: 'project',
         label: `${proj.name} [${proj.projectType}]`,
         project: proj,
         solution: null,
         path: proj.filePath,
         buildSystem: proj.buildSystem,
+        projectType: proj.projectType,
+        searchable: [
+          proj.name,
+          proj.filePath,
+          proj.language,
+          proj.projectType,
+          proj.buildSystem,
+          ...proj.targetFrameworks,
+          ...proj.platformTargets,
+        ].join(' ').toLowerCase(),
       });
     }
     return list;
@@ -53,6 +95,12 @@ export const BuildTab: React.FC = () => {
   // Build settings from store (persisted across tab switches)
   const targetIdx = useAppStore(s => s.buildTargetIdx);
   const setTargetIdx = useAppStore(s => s.setBuildTargetIdx);
+  const targetQuery = useAppStore(s => s.buildTargetQuery);
+  const setTargetQuery = useAppStore(s => s.setBuildTargetQuery);
+  const targetFilter = useAppStore(s => s.buildTargetFilter);
+  const setTargetFilter = useAppStore(s => s.setBuildTargetFilter);
+  const buildSearchActive = useAppStore(s => s.buildSearchActive);
+  const setBuildSearchActive = useAppStore(s => s.setBuildSearchActive);
   const configIdx = useAppStore(s => s.buildConfigIdx);
   const setConfigIdx = useAppStore(s => s.setBuildConfigIdx);
   const platformIdx = useAppStore(s => s.buildPlatformIdx);
@@ -70,8 +118,29 @@ export const BuildTab: React.FC = () => {
   const [activeSetting, setActiveSetting] = useState<SettingField>('configuration');
   const [elapsedMs, setElapsedMs] = useState(0);
 
+  const filteredTargets = useMemo(() => {
+    const query = targetQuery.trim().toLowerCase();
+    return targets.filter(target => {
+      const matchesFilter =
+        targetFilter === 'all'
+        || (targetFilter === 'solutions' && target.kind === 'solution')
+        || (targetFilter === 'projects' && target.kind === 'project')
+        || (targetFilter === 'dotnet' && target.buildSystem === 'dotnet')
+        || (targetFilter === 'msbuild' && target.buildSystem === 'msbuild')
+        || (targetFilter === 'cmake' && target.buildSystem === 'cmake')
+        || (targetFilter === 'cpp' && (
+          target.project?.language === 'cpp'
+          || target.projectType === 'cpp-msbuild'
+          || target.solutionType === 'cpp'
+          || target.solutionType === 'mixed'
+        ));
+      const matchesQuery = query.length === 0 || target.searchable.includes(query);
+      return matchesFilter && matchesQuery;
+    });
+  }, [targets, targetFilter, targetQuery]);
+
   // Current target's configurations
-  const currentTarget = targets[targetIdx];
+  const currentTarget = filteredTargets[targetIdx];
   const availableConfigs = useMemo(() => {
     if (!currentTarget) return [{ configuration: 'Debug', platform: 'Any CPU' }];
 
@@ -96,13 +165,13 @@ export const BuildTab: React.FC = () => {
   useEffect(() => {
     setConfigIdx(0);
     setPlatformIdx(0);
-  }, [targetIdx]);
+  }, [currentTarget?.path]);
 
   useEffect(() => {
-    if (targetIdx >= targets.length) {
-      setTargetIdx(Math.max(0, targets.length - 1));
+    if (targetIdx >= filteredTargets.length) {
+      setTargetIdx(Math.max(0, filteredTargets.length - 1));
     }
-  }, [targetIdx, targets.length]);
+  }, [targetIdx, filteredTargets.length]);
 
   useEffect(() => {
     if (configIdx >= uniqueConfigs.length) {
@@ -160,7 +229,19 @@ export const BuildTab: React.FC = () => {
   }, [status, buildStartTime]);
 
   const moveToTargetBoundary = (direction: 'top' | 'bottom') => {
-    setTargetIdx(direction === 'top' ? 0 : Math.max(0, targets.length - 1));
+    setTargetIdx(direction === 'top' ? 0 : Math.max(0, filteredTargets.length - 1));
+  };
+
+  const updateTargetQuery = (query: string) => {
+    setTargetQuery(query);
+    setTargetIdx(0);
+  };
+
+  const cycleTargetFilter = (dir: 1 | -1) => {
+    const idx = TARGET_FILTERS.findIndex(filter => filter.value === targetFilter);
+    const next = TARGET_FILTERS[(idx + dir + TARGET_FILTERS.length) % TARGET_FILTERS.length]!;
+    setTargetFilter(next.value);
+    setTargetIdx(0);
   };
 
   const adjustSetting = (dir: 1 | -1) => {
@@ -344,7 +425,7 @@ export const BuildTab: React.FC = () => {
       <Box flexDirection="row" flexShrink={0} marginBottom={1}>
         <Box marginRight={1}>
           <Text inverse={focusArea === 'action'} color={status === 'running' ? 'red' : 'green'} bold>
-            {status === 'running' ? ' ■ Cancel (Esc) ' : ' ▶ Build (Enter) '}
+            {status === 'running' ? ` ${glyphs.stop} Cancel (Esc) ` : ` ${glyphs.play} Build (Enter) `}
           </Text>
         </Box>
         {statusLine ? (
@@ -371,7 +452,7 @@ export const BuildTab: React.FC = () => {
               onSelect={setTargetIdx}
               items={targets.map((target, i) => (
                 <Text key={target.path} inverse={i === targetIdx} wrap="truncate">
-                  {i === targetIdx ? '▶ ' : '  '}{target.label}
+                  {i === targetIdx ? `${glyphs.play} ` : '  '}{target.label}
                 </Text>
               ))}
             />
@@ -442,7 +523,7 @@ export const BuildTab: React.FC = () => {
 
       {/* Bottom hints */}
       <Box flexShrink={0}>
-        <Text color="gray">Tab: section | j/k ↑↓: move | h/l ←→: change | Enter/b: build | Esc: cancel</Text>
+        <Text color="gray" wrap="truncate">Tab: section | j/k: move | h/l: change | Enter/b: build | Esc: cancel</Text>
       </Box>
     </Box>
   );
@@ -493,7 +574,7 @@ const BuildOutputPanel: React.FC<{ focused?: boolean }> = React.memo(({ focused 
   return (
     <Panel title="Output" focused={focused} subtitle={
       focused
-        ? `${logEntries.length} lines | ${following ? '⬇ follow' : '⏸ scroll'} | j/k g/G f`
+        ? `${logEntries.length} lines | ${following ? glyphs.follow : 'Scroll'} | j/k g/G f`
         : `${logEntries.length} lines`
     }>
       <Box flexDirection="column" flexGrow={1} overflowY="hidden">
@@ -529,15 +610,15 @@ const FieldRow: React.FC<FieldRowProps> = ({ label, value, active, hint, options
     <Box flexDirection="row" marginBottom={0}>
       <Box width={12} flexShrink={0}>
         <Text color={active ? 'cyan' : 'gray'} bold={active}>
-          {active ? '▶ ' : '  '}{label}
+          {active ? `${glyphs.play} ` : '  '}{label}
         </Text>
       </Box>
       <Box flexGrow={1}>
         {hasMultiple ? (
           <Text wrap="wrap">
-            <Text color={active ? 'white' : 'gray'}>◄ </Text>
+            <Text color={active ? 'white' : 'gray'}>{legacyWindowsConsole ? '< ' : '◄ '}</Text>
             <Text bold inverse={active} color={active ? 'white' : undefined}> {value} </Text>
-            <Text color={active ? 'white' : 'gray'}> ► </Text>
+            <Text color={active ? 'white' : 'gray'}>{legacyWindowsConsole ? ' > ' : ' ► '}</Text>
             <Text color="gray">({idx + 1}/{total})</Text>
           </Text>
         ) : (

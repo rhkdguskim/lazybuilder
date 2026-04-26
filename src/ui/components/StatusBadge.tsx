@@ -14,7 +14,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ severity, label, detai
   const symbol = symbols[severity] ?? '?';
 
   return (
-    <Text>
+    <Text wrap="truncate">
       <Text color={color}>{symbol}</Text>
       <Text> {label}</Text>
       {detail && <Text color="gray"> ({detail})</Text>}

@@ -18,10 +18,15 @@ const TAB_IDS: TabId[] = TAB_DEFS.map(t => t.id as TabId);
 export function useTabNavigation() {
   const activeTab = useAppStore(s => s.activeTab);
   const setActiveTab = useAppStore(s => s.setActiveTab);
+  const buildSearchActive = useAppStore(s => s.buildSearchActive);
 
   const isInteractive = !!process.stdin.isTTY;
 
   useInput((input, key) => {
+    if (activeTab === 'build' && buildSearchActive) {
+      return;
+    }
+
     // Direct 1 through 8, or Ctrl+1 through Ctrl+8
     if (input >= '1' && input <= '8') {
       const idx = parseInt(input) - 1;

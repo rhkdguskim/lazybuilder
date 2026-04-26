@@ -10,14 +10,16 @@
 ## 1. Invocation forms
 
 ```bash
-buildercli                       # ✅ TUI mode (default when stdin is TTY and no subcommand)
-buildercli <subcommand> [flags]  # 🚧 Headless mode
-buildercli --version             # ✅ prints version, exits 0
-buildercli --help                # ✅ prints summary, exits 0
-buildercli --help <subcommand>   # 🚧 prints subcommand help
+lazybuilder                       # ✅ TUI mode (default when stdin is TTY and no subcommand)
+lazybuilder <subcommand> [flags]  # 🚧 Headless mode (P0 — partial today)
+lazybuilder --version, -v         # ✅ prints version, exits 0
+lazybuilder --help, -h            # ✅ prints summary, exits 0
+lazybuilder --check-update        # ✅ JSON envelope `UpdateCheck`, exits 0
+lazybuilder --update              # ✅ JSON envelope `UpdateResult`, runs npm/git update
+lazybuilder --help <subcommand>   # 🚧 prints subcommand help
 ```
 
-`lazybuild` is an alias for `buildercli` (both bins point at `bin/lazybuild.js`).
+The bin file is `bin/lazybuilder.js`. The `--version`, `--help`, `--check-update`, `--update` flags are dispatched **before** the TUI is bootstrapped and never enter alt-screen mode.
 
 ---
 
@@ -34,7 +36,7 @@ buildercli --help <subcommand>   # 🚧 prints subcommand help
 | `--schema <ver>` | string | `v1` | Pin the output envelope schema; mismatch ⇒ exit 5 |
 | `--timeout <ms>` | number | per-subcommand | Override default timeout |
 
-Agent mode auto-enables `--json --no-update-check --no-color` when **any** of `CI=1`, `BUILDERCLI_AGENT=1`, or non-TTY stdout is true.
+Agent mode auto-enables `--json --no-update-check --no-color` when **any** of `CI=1`, `LAZYBUILDER_AGENT=1`, or non-TTY stdout is true.
 
 ---
 
@@ -45,7 +47,7 @@ Agent mode auto-enables `--json --no-update-check --no-color` when **any** of `C
 Detect installed tools/SDKs/toolchains.
 
 ```bash
-buildercli scan env [--json]
+lazybuilder scan env [--json]
 ```
 
 | Output kind | `EnvironmentSnapshot` |
@@ -59,7 +61,7 @@ buildercli scan env [--json]
 Walk a directory and classify every solution/project found.
 
 ```bash
-buildercli scan projects [PATH] [--depth N] [--json]
+lazybuilder scan projects [PATH] [--depth N] [--json]
 ```
 
 | Flag | Default | Meaning |
@@ -76,7 +78,7 @@ buildercli scan projects [PATH] [--depth N] [--json]
 Deep info for a single project file.
 
 ```bash
-buildercli inspect <PATH> [--json]
+lazybuilder inspect <PATH> [--json]
 ```
 
 `PATH` may be a `.sln`, `.csproj`, `.vcxproj`, or `CMakeLists.txt`.
@@ -89,7 +91,7 @@ buildercli inspect <PATH> [--json]
 Run `scan env` + `scan projects` + diagnostic rules in one shot.
 
 ```bash
-buildercli diagnose [PATH] [--json] [--severity <min>]
+lazybuilder diagnose [PATH] [--json] [--severity <min>]
 ```
 
 | Flag | Default | Meaning |
@@ -105,7 +107,7 @@ buildercli diagnose [PATH] [--json] [--severity <min>]
 Resolve and execute a build via the right adapter (dotnet / msbuild / cpp-msbuild / cmake).
 
 ```bash
-buildercli build <TARGET> \
+lazybuilder build <TARGET> \
   [-c|--configuration Release] \
   [-p|--platform x64] \
   [-v|--verbosity normal] \
@@ -129,7 +131,7 @@ buildercli build <TARGET> \
 | `--restore` | true for first build | `/restore` MSBuild, `dotnet restore` first |
 | `--binary-log` | false | Emit `msbuild.binlog` next to project |
 | `--dev-shell` | auto for C++/MSBuild | Wrap in vcvarsall/VsDevCmd |
-| `--profile` | none | Load a saved profile from `~/.buildercli/profiles/<name>.json` |
+| `--profile` | none | Load a saved profile from `~/.lazybuilder/profiles/<name>.json` |
 | `--ndjson-stream` | false | Stream one envelope per stdout line |
 
 | Output kind (final) | `BuildResult` |
@@ -144,7 +146,7 @@ Cancel: send `SIGINT` once for graceful, twice for hard kill (the second trigger
 Headless health probe for CI and support tickets.
 
 ```bash
-buildercli self-check [--json]
+lazybuilder self-check [--json]
 ```
 
 Exits 0 if the binary boots, env scan completes, and the schema version is honored. Used as a smoke test in CI matrices.
@@ -154,10 +156,10 @@ Exits 0 if the binary boots, env scan completes, and the schema version is honor
 Manage saved build profiles.
 
 ```bash
-buildercli profile list
-buildercli profile save <name> --target ... -c ...
-buildercli profile show <name>
-buildercli profile delete <name>
+lazybuilder profile list
+lazybuilder profile save <name> --target ... -c ...
+lazybuilder profile show <name>
+lazybuilder profile delete <name>
 ```
 
 ### 3.8 `history`     🔭 future
@@ -165,8 +167,8 @@ buildercli profile delete <name>
 Read persisted build history.
 
 ```bash
-buildercli history list [--limit N] [--json]
-buildercli history show <id> [--json]
+lazybuilder history list [--limit N] [--json]
+lazybuilder history show <id> [--json]
 ```
 
 ### 3.9 (default, no subcommand) — TUI     ✅ shipped
@@ -195,14 +197,14 @@ These are **stable**. Adding a new code is allowed (e.g., 6, 7); reusing or repu
 
 | Var | Effect |
 |---|---|
-| `BUILDERCLI_AGENT=1` | Force agent mode (JSON, no update check, no TUI) |
-| `BUILDERCLI_HOME` | Override config dir (default: `~/.buildercli`) |
-| `BUILDERCLI_LOG_LEVEL` | Same as `--log-level` |
-| `BUILDERCLI_NO_UPDATE_CHECK=1` | Skip update probe |
-| `BUILDERCLI_SCHEMA` | Default schema version |
+| `LAZYBUILDER_AGENT=1` | Force agent mode (JSON, no update check, no TUI) |
+| `LAZYBUILDER_HOME` | Override config dir (default: `~/.lazybuilder`) |
+| `LAZYBUILDER_LOG_LEVEL` | Same as `--log-level` |
+| `LAZYBUILDER_NO_UPDATE_CHECK=1` | Skip update probe |
+| `LAZYBUILDER_SCHEMA` | Default schema version |
 | `CI` | Treated as agent mode |
 | `NO_COLOR` | Strip ANSI colors |
-| `BUILDERCLI_DEV_SHELL_DEBUG=1` | Print the generated `.bat` on stderr |
+| `LAZYBUILDER_DEV_SHELL_DEBUG=1` | Print the generated `.bat` on stderr |
 
 ---
 
@@ -220,12 +222,12 @@ Agents must parse stdout. They may surface stderr to humans but never to schema-
 
 ## 7. Compatibility promise (v1)
 
-For any envelope tagged `buildercli/v1`:
+For any envelope tagged `lazybuilder/v1`:
 
 - Documented fields will not be removed.
 - Documented fields will not change type.
 - New fields may be added; agents must ignore unknown fields.
 - Enum values may be added; agents must handle unknown values defensively (treat as `unknown` severity, etc.).
-- Breaking change ⇒ bump to `buildercli/v2`. Both versions ship side by side for at least one minor release.
+- Breaking change ⇒ bump to `lazybuilder/v2`. Both versions ship side by side for at least one minor release.
 
 If you (an agent) detect a v1 envelope missing a documented required field, that is a bug — report with the offending payload.

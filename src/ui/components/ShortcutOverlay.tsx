@@ -6,14 +6,14 @@ interface ShortcutOverlayProps {
 }
 
 const TAB_HINTS: Record<string, string[]> = {
-  overview: ['숫자 1-8: 탭 이동', '[ / ]: 이전/다음 탭', 'q: 종료'],
-  environment: ['숫자 1-8: 탭 이동', '[ / ]: 이전/다음 탭', 'q: 종료'],
-  projects: ['↑↓ 또는 j/k: 항목 이동', 'Enter: Build 탭으로 이동', '숫자 1-8: 탭 이동'],
-  build: ['↑↓ 또는 j/k: 필드/타겟 이동', '←→ 또는 h/l: 값 변경', 'Space/Enter: 토글 또는 빌드'],
-  diagnostics: ['숫자 1-8: 탭 이동', '[ / ]: 이전/다음 탭', 'q: 종료'],
-  logs: ['Tab: 필터 변경', '↑↓ 또는 j/k: 스크롤', 'f: follow 전환, Ctrl+L: clear'],
-  history: ['숫자 1-8: 탭 이동', '[ / ]: 이전/다음 탭', 'q: 종료'],
-  settings: ['숫자 1-8: 탭 이동', '[ / ]: 이전/다음 탭', 'q: 종료'],
+  overview: ['1-8: switch tab', '[ / ]: previous/next tab', 'q: quit'],
+  environment: ['j/k or arrows: move', 'g/G: top/bottom', 'q: quit'],
+  projects: ['j/k or arrows: move', 'Enter: open Build', '1-8: switch tab'],
+  build: ['j/k: move focus', 'h/l: change value', 'Space/Enter: toggle or build'],
+  diagnostics: ['h/l: filter', 'j/k: move', 'g/G: top/bottom'],
+  logs: ['h/l: filter', 'j/k: scroll', 'f: follow, Ctrl+L: clear'],
+  history: ['j/k or arrows: move', 'g/G: top/bottom', 'q: quit'],
+  settings: ['j/k or arrows: move', 'Enter: execute', 'q: quit'],
 };
 
 export const ShortcutOverlay: React.FC<ShortcutOverlayProps> = ({ activeTab }) => {
@@ -24,14 +24,14 @@ export const ShortcutOverlay: React.FC<ShortcutOverlayProps> = ({ activeTab }) =
       <Text bold color="cyan">Keyboard Help</Text>
       <Box height={1} />
       <Text>Global</Text>
-      <Text color="gray">  ? : help toggle</Text>
-      <Text color="gray">  1-8 : direct tab switch</Text>
-      <Text color="gray">  [ / ] : prev/next tab</Text>
-      <Text color="gray">  q : quit</Text>
+      <Text color="gray" wrap="truncate">  ? : help toggle</Text>
+      <Text color="gray" wrap="truncate">  1-8 : direct tab switch</Text>
+      <Text color="gray" wrap="truncate">  [ / ] : prev/next tab</Text>
+      <Text color="gray" wrap="truncate">  q : quit</Text>
       <Box height={1} />
       <Text>{activeTab} tab</Text>
       {hints.map(hint => (
-        <Text key={hint} color="gray">  {hint}</Text>
+        <Text key={hint} color="gray" wrap="truncate">  {hint}</Text>
       ))}
     </Box>
   );

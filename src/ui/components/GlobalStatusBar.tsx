@@ -1,8 +1,18 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 
+const statusText = (status: string, compact: boolean): string => {
+  if (!compact) return status;
+  if (status === 'done') return 'ok';
+  if (status === 'scanning') return 'scan';
+  if (status === 'error') return 'err';
+  return status;
+};
+
 export const GlobalStatusBar: React.FC = () => {
+  const { stdout } = useStdout();
+  const compact = (stdout?.columns ?? 80) < 100;
   const envScanStatus = useAppStore(s => s.envScanStatus);
   const projectScanStatus = useAppStore(s => s.projectScanStatus);
   const projects = useAppStore(s => s.projects);
@@ -14,30 +24,28 @@ export const GlobalStatusBar: React.FC = () => {
   const warnings = diagnostics.filter(item => item.severity === 'warning').length;
 
   return (
-    <Box paddingX={1} paddingY={1} borderStyle="round" borderColor="gray" justifyContent="space-between" flexShrink={0}>
-      <Box>
-        <Text color="gray">Scan </Text>
+    <Box paddingX={1} flexShrink={0} overflow="hidden">
+      <Text wrap="truncate">
+        <Text color="gray">{compact ? 'scan ' : 'Scan '}</Text>
         <Text color={envScanStatus === 'done' ? 'green' : envScanStatus === 'error' ? 'red' : 'yellow'}>
-          env:{envScanStatus}
+          env:{statusText(envScanStatus, compact)}
         </Text>
         <Text color="gray"> | </Text>
         <Text color={projectScanStatus === 'done' ? 'green' : projectScanStatus === 'error' ? 'red' : 'yellow'}>
-          projects:{projectScanStatus}
+          proj:{statusText(projectScanStatus, compact)}
         </Text>
         <Text color="gray"> | </Text>
-        <Text>targets:</Text>
+        <Text>{compact ? 'targets' : 'targets:'}</Text>
         <Text bold color="cyan"> {projects.length}</Text>
-      </Box>
-
-      <Box>
-        <Text>diag:</Text>
+        <Text color="gray"> | </Text>
+        <Text>{compact ? 'diag' : 'diag:'}</Text>
         <Text color={errors > 0 ? 'red' : 'green'}> {errors}E</Text>
         <Text color="yellow"> {warnings}W</Text>
         <Text color="gray"> | </Text>
-        <Text>logs:</Text>
+        <Text>{compact ? 'logs' : 'logs:'}</Text>
         <Text bold> {logCount}</Text>
         <Text color="gray"> | </Text>
-        <Text>last build:</Text>
+        <Text>{compact ? 'build' : 'last build:'}</Text>
         <Text color={
           buildResult?.status === 'success' ? 'green' :
           buildResult?.status === 'failure' ? 'red' :
@@ -45,7 +53,7 @@ export const GlobalStatusBar: React.FC = () => {
         }>
           {' '}{buildResult?.status ?? 'none'}
         </Text>
-      </Box>
+      </Text>
     </Box>
   );
 };

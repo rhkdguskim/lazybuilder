@@ -9,7 +9,7 @@ Each recipe is a known-good pattern. Pick one, adapt the args.
 **Trigger**: user dropped a `.csproj` / `.sln` in the chat and asked if it builds.
 
 ```bash
-buildercli diagnose --json --severity warning
+lazybuilder diagnose --json --severity warning
 ```
 
 Parse `data.diagnostics`. Filter:
@@ -27,7 +27,7 @@ If any `blocker.code` matches `*_MISSING` (e.g., `DOTNET_SDK_MISSING`, `WINSDK_M
 ## R2. "What command should I run to build this?"
 
 ```bash
-buildercli inspect ./src/MyApp/MyApp.csproj --json
+lazybuilder inspect ./src/MyApp/MyApp.csproj --json
 ```
 
 Read `data.recommendedCommand.displayString`. Show it to the user before executing — never silently run.
@@ -46,7 +46,7 @@ Proceed? [y/N]
 ## R3. "Build it and tell me what broke"
 
 ```bash
-buildercli build ./MyApp.sln \
+lazybuilder build ./MyApp.sln \
   -c Release -p x64 \
   --ndjson-stream \
   --log-level warn
@@ -58,7 +58,7 @@ Stream parser sketch:
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 
-const proc = spawn('buildercli', [
+const proc = spawn('lazybuilder', [
   'build', './MyApp.sln',
   '-c', 'Release', '-p', 'x64',
   '--ndjson-stream',
@@ -90,8 +90,8 @@ When summarizing for a human: group by `filePath`, then show first 3 errors per 
 ## R4. "Why is the C++ build failing — toolset issue?"
 
 ```bash
-buildercli inspect ./Native/Native.vcxproj --json
-buildercli diagnose --json --severity error
+lazybuilder inspect ./Native/Native.vcxproj --json
+lazybuilder diagnose --json --severity error
 ```
 
 Cross-reference:
@@ -107,21 +107,21 @@ If toolset and installed VS major versions don't intersect (toolset map: `v140�
 ## R5. "Run a Clean Rebuild then Build"
 
 ```bash
-buildercli build ./MyApp.sln -c Release --target Clean   --json
-buildercli build ./MyApp.sln -c Release --target Rebuild --json
+lazybuilder build ./MyApp.sln -c Release --target Clean   --json
+lazybuilder build ./MyApp.sln -c Release --target Rebuild --json
 ```
 
 Two invocations, not chained, so the agent can stop between if step 1 errors.
 
 ---
 
-## R6. CI smoke for "does buildercli itself work on this CI runner?"
+## R6. CI smoke for "does lazybuilder itself work on this CI runner?"
 
 ```yaml
-- run: npx buildercli self-check --json
+- run: npx lazybuilder self-check --json
 ```
 
-Exit 0 means the binary booted, env scan finished, schema honored. Use as a precheck before any build step that depends on `buildercli`.
+Exit 0 means the binary booted, env scan finished, schema honored. Use as a precheck before any build step that depends on `lazybuilder`.
 
 ---
 
@@ -130,14 +130,14 @@ Exit 0 means the binary booted, env scan finished, schema honored. Use as a prec
 After a successful R3:
 
 ```bash
-buildercli profile save my-release \
+lazybuilder profile save my-release \
   --target ./MyApp.sln -c Release -p x64 --parallel
 ```
 
 Re-run later with:
 
 ```bash
-buildercli build --profile my-release --ndjson-stream
+lazybuilder build --profile my-release --ndjson-stream
 ```
 
 ---
@@ -145,7 +145,7 @@ buildercli build --profile my-release --ndjson-stream
 ## R8. "Detect that this repo is a mixed solution and split build per project"
 
 ```bash
-buildercli scan projects . --json
+lazybuilder scan projects . --json
 ```
 
 Loop:
@@ -164,7 +164,7 @@ Useful when one giant `.sln` has C# (cross-platform) and C++ (Windows-only) and 
 
 ## R9. Programmatic fallback (today, until headless CLI ships)
 
-When the `buildercli <subcommand>` surface is not yet present:
+When the `lazybuilder <subcommand>` surface is not yet present:
 
 ```ts
 // 1) From inside a clone of the repo
@@ -179,7 +179,7 @@ const items     = new DiagnosticsService().analyze(env, scan.projects);
 
 // agent envelope — wrap before piping back to the model
 process.stdout.write(JSON.stringify({
-  schema: 'buildercli/v1',
+  schema: 'lazybuilder/v1',
   kind:   'DiagnoseReport',
   data:   { env, projects: scan.projects, solutions: scan.solutions, diagnostics: items },
 }));
@@ -203,12 +203,12 @@ const profile = {
 
 const result = await buildSvc.execute(project, profile, env, (entry) => {
   process.stdout.write(JSON.stringify({
-    schema: 'buildercli/v1', kind: 'BuildLog', data: entry
+    schema: 'lazybuilder/v1', kind: 'BuildLog', data: entry
   }) + '\n');
 });
 
 process.stdout.write(JSON.stringify({
-  schema: 'buildercli/v1', kind: 'BuildResult', data: result
+  schema: 'lazybuilder/v1', kind: 'BuildResult', data: result
 }) + '\n');
 process.exit(result.status === 'success' ? 0 : 3);
 ```
@@ -223,7 +223,7 @@ Pattern for an agent that just edited C# code:
 
 ```text
 1. agent edits Foo.cs
-2. agent runs:  buildercli build ./MyApp.sln -c Debug --ndjson-stream
+2. agent runs:  lazybuilder build ./MyApp.sln -c Debug --ndjson-stream
 3. on exit 0 → respond "fixed"
 4. on exit 3 → re-edit using errors[0..3]; loop max 3 attempts
 5. on exit 2 → stop, ask human to install tooling

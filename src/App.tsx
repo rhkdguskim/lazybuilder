@@ -8,6 +8,7 @@ import { useTabNavigation } from './ui/hooks/useTabNavigation.js';
 import { useEnvironmentScan } from './ui/hooks/useEnvironmentScan.js';
 import { useProjectScan } from './ui/hooks/useProjectScan.js';
 import { useAppStore } from './ui/store/useAppStore.js';
+import { compactPath } from './ui/utils/text.js';
 import { DiagnosticsService } from './application/DiagnosticsService.js';
 import { UpdateChecker, type UpdateCheckResult } from './infrastructure/updater/UpdateChecker.js';
 
@@ -26,20 +27,24 @@ const App: React.FC = () => {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const termHeight = stdout?.rows ?? 30;
+  const termWidth = stdout?.columns ?? 80;
   const { activeTab, tabs } = useTabNavigation();
   const { snapshot, status: envStatus } = useEnvironmentScan();
   const { projects, status: projStatus } = useProjectScan();
   const setDiagnostics = useAppStore(s => s.setDiagnostics);
+  const buildSearchActive = useAppStore(s => s.buildSearchActive);
 
   // Update notification (background, non-blocking)
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
   const [updateBannerVisible, setUpdateBannerVisible] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'updating' | 'done' | 'error'>('idle');
+  const [updateManualCmd, setUpdateManualCmd] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [scanFrame, setScanFrame] = useState(0);
 
   // Background update check — does NOT block the main UI
   useEffect(() => {
+    if (process.env['LAZYBUILDER_NO_UPDATE_CHECK'] === '1') return;
     const checker = new UpdateChecker();
     checker.check().then(result => {
       if (result && result.updateAvailable) {
@@ -55,17 +60,18 @@ const App: React.FC = () => {
   const performUpdate = () => {
     setUpdateStatus('updating');
     const checker = new UpdateChecker();
-    checker.performUpdate().then(success => {
-      if (success) {
+    checker.performUpdate().then(outcome => {
+      if (outcome.success) {
         setUpdateStatus('done');
         setTimeout(() => exit(), 2000);
       } else {
+        setUpdateManualCmd(outcome.manualCommand ?? null);
         setUpdateStatus('error');
-        setTimeout(() => setUpdateBannerVisible(false), 4000);
+        setTimeout(() => setUpdateBannerVisible(false), 8000);
       }
     }).catch(() => {
       setUpdateStatus('error');
-      setTimeout(() => setUpdateBannerVisible(false), 4000);
+      setTimeout(() => setUpdateBannerVisible(false), 8000);
     });
   };
 
@@ -81,6 +87,10 @@ const App: React.FC = () => {
         setUpdateBannerVisible(false);
         return;
       }
+    }
+
+    if (activeTab === 'build' && buildSearchActive) {
+      return;
     }
 
     if (input === '?') {
@@ -133,22 +143,27 @@ const App: React.FC = () => {
   const isInitialScanning = !bootCompleted && (envStatus === 'idle' || envStatus === 'scanning');
   const scanDots = '.'.repeat((scanFrame % 4) + 1).padEnd(4, ' ');
   const scanBar = ['[=   ]', '[==  ]', '[=== ]', '[ ===]', '[  ==]', '[   =]'][scanFrame % 6];
+  const cwdLabel = compactPath(process.cwd(), Math.max(18, termWidth - 16));
 
   if (isInitialScanning) {
     return (
       <Box flexDirection="column" width="100%" height={termHeight} padding={1}>
-        <Box flexShrink={0} justifyContent="space-between">
-          <Text bold color="cyan">LazyBuild</Text>
-          <Text color="gray">{process.cwd()}</Text>
+        <Box flexDirection="row" flexShrink={0} overflow="hidden">
+          <Box width={12} flexShrink={0}>
+            <Text bold color="cyan">LazyBuilder</Text>
+          </Box>
+          <Box flexGrow={1} overflow="hidden">
+            <Text color="gray" wrap="truncate">{cwdLabel}</Text>
+          </Box>
         </Box>
         <Box height={1} />
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
-          <Text bold color="cyan">Scanning Environment{scanDots}</Text>
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1} overflow="hidden">
+          <Text bold color="cyan" wrap="truncate">Scanning Environment{scanDots}</Text>
           <Box height={1} />
           <Text color="cyan">{scanBar}</Text>
           <Box height={1} />
-          <Text color="gray">Build environment and project inventory are being collected.</Text>
-          <Text color="gray">Tabs will appear after the initial scan completes.</Text>
+          <Text color="gray" wrap="truncate">Build environment and project inventory are being collected.</Text>
+          <Text color="gray" wrap="truncate">Tabs will appear after the initial scan completes.</Text>
         </Box>
       </Box>
     );
@@ -157,27 +172,37 @@ const App: React.FC = () => {
   return (
     <Box flexDirection="column" width="100%" height={termHeight} overflowY="hidden">
       {/* Header */}
-      <Box paddingX={1} justifyContent="space-between" flexShrink={0}>
-        <Text bold color="cyan">LazyBuild</Text>
-        <Text color="gray">{process.cwd()}</Text>
+      <Box paddingX={1} flexDirection="row" flexShrink={0} overflow="hidden">
+        <Box width={12} flexShrink={0}>
+          <Text bold color="cyan">LazyBuilder</Text>
+        </Box>
+        <Box flexGrow={1} overflow="hidden">
+          <Text color="gray" wrap="truncate">{cwdLabel}</Text>
+        </Box>
       </Box>
-
-      <GlobalStatusBar />
 
       {/* Update notification banner (non-blocking) */}
       {updateBannerVisible && updateInfo && (
-        <Box paddingX={1} borderStyle="round" borderColor="yellow" marginX={1} flexShrink={0}>
+        <Box paddingX={1} borderStyle="round" borderColor="yellow" marginX={1} flexShrink={0} overflow="hidden">
           {updateStatus === 'idle' && (
-            <Text>
+            <Text wrap="truncate">
               <Text color="yellow" bold> Update available </Text>
-              <Text color="gray">({updateInfo.behindCount} commit(s) behind) </Text>
+              <Text color="gray">
+                {updateInfo.mode === 'git-clone'
+                  ? `(${updateInfo.behindCount ?? 0} commit(s) behind) `
+                  : `(${updateInfo.currentVersion} → ${updateInfo.latestVersion}) `}
+              </Text>
               <Text color="cyan" bold>[U]</Text><Text> Update </Text>
               <Text color="gray" bold>[X]</Text><Text> Dismiss</Text>
             </Text>
           )}
-          {updateStatus === 'updating' && <Text color="yellow">Updating... please wait</Text>}
-          {updateStatus === 'done' && <Text color="green">Update complete! Restarting...</Text>}
-          {updateStatus === 'error' && <Text color="red">Update failed. Run "git pull && npm install && npm run build" manually.</Text>}
+          {updateStatus === 'updating' && <Text color="yellow" wrap="truncate">Updating... please wait</Text>}
+          {updateStatus === 'done' && <Text color="green" wrap="truncate">Update complete. Restarting...</Text>}
+          {updateStatus === 'error' && (
+            <Text color="red" wrap="truncate">
+              Update failed. Run manually: <Text bold>{updateManualCmd ?? `npm install -g ${updateInfo.packageName}@latest`}</Text>
+            </Text>
+          )}
         </Box>
       )}
 
@@ -196,6 +221,8 @@ const App: React.FC = () => {
         <Box display={!showHelp && activeTab === 'history' ? 'flex' : 'none'} flexGrow={1} overflowY="hidden"><HistoryTab /></Box>
         <Box display={!showHelp && activeTab === 'settings' ? 'flex' : 'none'} flexGrow={1} overflowY="hidden"><SettingsTab /></Box>
       </Box>
+
+      <GlobalStatusBar />
 
       {/* Help Bar */}
       <HelpBar items={helpItems} />

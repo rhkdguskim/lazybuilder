@@ -8,13 +8,15 @@ interface KeyValueTableProps {
 
 export const KeyValueTable: React.FC<KeyValueTableProps> = ({ rows, keyWidth = 20 }) => {
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" overflow="hidden">
       {rows.map((row, i) => (
-        <Box key={i} flexDirection="row">
-          <Box width={keyWidth}>
-            <Text color="gray">{row.key}</Text>
+        <Box key={i} flexDirection="row" overflow="hidden">
+          <Box width={keyWidth} flexShrink={0}>
+            <Text color="gray" wrap="truncate">{row.key}</Text>
           </Box>
-          <Text color={row.color as any}>{row.value}</Text>
+          <Box flexGrow={1} overflow="hidden">
+            <Text color={row.color as any} wrap="truncate">{row.value}</Text>
+          </Box>
         </Box>
       ))}
     </Box>

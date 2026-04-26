@@ -1,17 +1,54 @@
 {
-  "name": "lazybuild",
+  "name": "lazybuilder",
   "version": "0.1.0",
-  "description": "TUI for .NET/MSBuild/C++ build environment diagnostics and execution",
+  "description": "TUI + CLI for diagnosing .NET / MSBuild / C++ / CMake build environments and executing builds. Designed as a tool for AI dev loops (Claude Code, Cursor, …) and as a human-friendly TUI.",
   "type": "module",
-  "bin": {
-    "lazybuild": "./bin/lazybuild.js",
-    "buildercli": "./bin/lazybuild.js"
+  "license": "MIT",
+  "author": {
+    "name": "rhkdguskim",
+    "email": "kwanghyeon.kim@mirero.co.kr"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rhkdguskim/lazybuilder.git"
+  },
+  "homepage": "https://github.com/rhkdguskim/lazybuilder#readme",
+  "bugs": {
+    "url": "https://github.com/rhkdguskim/lazybuilder/issues"
+  },
+  "keywords": [
+    "tui",
+    "cli",
+    "build",
+    "dotnet",
+    "msbuild",
+    "cmake",
+    "cpp",
+    "csharp",
+    "ink",
+    "react",
+    "ai-tool",
+    "agent",
+    "claude-code",
+    "harness"
+  ],
+  "bin": {
+    "lazybuilder": "./bin/lazybuilder.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "agent.md",
+    "docs/agents/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "tsx src/main.tsx",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
-    "postinstall": "npm run build",
+    "prepare": "test -d node_modules/typescript && tsc -p tsconfig.json || true",
+    "prepublishOnly": "tsc -p tsconfig.json",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest"
@@ -20,22 +57,22 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "ink": "^5.2.0",
     "@inkjs/ui": "^2.0.0",
-    "react": "^18.3.0",
     "chalk": "^5.3.0",
     "fast-glob": "^3.3.0",
     "fast-xml-parser": "^4.4.0",
-    "tree-kill": "^1.2.2",
     "figures": "^6.1.0",
+    "ink": "^5.2.0",
+    "react": "^18.3.0",
+    "tree-kill": "^1.2.2",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "@types/react": "^18.3.0",
     "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.16.0",
-    "vitest": "^2.0.0",
-    "ink-testing-library": "^4.0.0"
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
   }
 }

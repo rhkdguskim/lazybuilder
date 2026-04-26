@@ -2,7 +2,7 @@
 set -e
 
 echo "========================================="
-echo "  LazyBuild / BuilderCLI Installer"
+echo "  LazyBuilder Installer (from source)"
 echo "========================================="
 echo ""
 
@@ -49,8 +49,12 @@ echo "  Installation complete!"
 echo "========================================="
 echo ""
 echo "  You can now run:"
-echo "    buildercli    - start the TUI"
-echo "    lazybuild     - start the TUI (alias)"
+echo "    lazybuilder              - start the TUI"
+echo "    lazybuilder --version    - print version"
+echo "    lazybuilder --update     - update to the latest"
+echo ""
+echo "  Or via npm:"
+echo "    npm install -g lazybuilder"
 echo ""
 echo "  Or run in dev mode:"
 echo "    npm run dev"

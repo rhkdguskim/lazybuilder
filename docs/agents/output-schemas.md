@@ -1,9 +1,9 @@
-# Output Schemas (`buildercli/v1`)
+# Output Schemas (`lazybuilder/v1`)
 
 Every machine-readable output is a JSON envelope:
 
 ```json
-{"schema": "buildercli/v1", "kind": "<KindName>", "data": <KindShape>}
+{"schema": "lazybuilder/v1", "kind": "<KindName>", "data": <KindShape>}
 ```
 
 Streaming outputs (`--ndjson-stream`) emit one envelope per line, ending with a final `BuildResult` (or terminal envelope) — no trailing newline-delimited array.
@@ -229,7 +229,7 @@ Snapshot of all detected build tools at scan time.
 
 ## BuildResult
 
-Final envelope from `buildercli build`.
+Final envelope from `lazybuilder build`.
 
 ```jsonc
 {
@@ -329,6 +329,6 @@ src/domain/enums.ts
 Agents that want compile-time types can import them directly:
 
 ```ts
-import type { EnvironmentSnapshot } from 'lazybuild/dist/domain/models/EnvironmentSnapshot.js';
-import type { BuildResult } from 'lazybuild/dist/domain/models/BuildResult.js';
+import type { EnvironmentSnapshot } from 'lazybuilder/dist/domain/models/EnvironmentSnapshot.js';
+import type { BuildResult } from 'lazybuilder/dist/domain/models/BuildResult.js';
 ```

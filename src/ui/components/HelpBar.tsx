@@ -7,11 +7,11 @@ interface HelpBarProps {
 
 export const HelpBar: React.FC<HelpBarProps> = ({ items }) => {
   return (
-    <Box flexDirection="row" paddingX={1} flexShrink={0}>
+    <Box flexDirection="row" paddingX={1} flexShrink={0} overflow="hidden">
       {items.map((item, i) => (
-        <Box key={item.key} marginRight={2}>
+        <Box key={item.key} marginRight={2} flexShrink={0}>
           <Text color="cyan" bold>{item.key}</Text>
-          <Text color="gray"> {item.label}</Text>
+          <Text color="gray" wrap="truncate"> {item.label}</Text>
         </Box>
       ))}
     </Box>

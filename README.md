@@ -1,4 +1,4 @@
-# LazyBuild - .NET / MSBuild / C++ Build TUI
+# LazyBuilder - .NET / MSBuild / C++ Build TUI
 
 Terminal UI for diagnosing build environments and executing builds without Visual Studio IDE.
 
@@ -10,8 +10,9 @@ Terminal UI for diagnosing build environments and executing builds without Visua
 - **Build Execution**: dotnet build, msbuild, cmake --build with real-time streaming output
 - **Diagnostics**: Pre-build environment validation with actionable fix suggestions
 - **Log Viewer**: Filtered log output with error/warning parsing and summary
-- **Auto Update**: Checks for updates on startup from GitHub repository
+- **Auto Update**: Checks npm registry (or git origin if cloned) on startup
 - **Cross-platform**: Windows primary, Linux/macOS partial support
+- **AI-Tool Ready**: Headless flags + JSON envelope contract — see [`agent.md`](agent.md)
 
 ## Requirements
 
@@ -21,47 +22,54 @@ Terminal UI for diagnosing build environments and executing builds without Visua
 
 ## Installation
 
-### Quick Install (Windows)
+### Recommended (npm — global)
+
+```bash
+npm install -g lazybuilder
+lazybuilder           # launch the TUI
+```
+
+### Update
+
+```bash
+lazybuilder --check-update   # JSON: { updateAvailable, currentVersion, latestVersion, mode }
+lazybuilder --update         # auto-update (npm or git, depending on install mode)
+
+# manual fallback:
+npm install -g lazybuilder@latest
+```
+
+### From source (Windows)
 
 ```bat
-git clone https://github.com/rhkdguskim/buildercli.git
-cd buildercli
+git clone https://github.com/rhkdguskim/lazybuilder.git
+cd lazybuilder
 install.bat
 ```
 
-### Quick Install (Linux / macOS)
+### From source (Linux / macOS)
 
 ```bash
-git clone https://github.com/rhkdguskim/buildercli.git
-cd buildercli
+git clone https://github.com/rhkdguskim/lazybuilder.git
+cd lazybuilder
 ./install.sh
 ```
 
-### Manual Install
+### Manual from source
 
 ```bash
-git clone https://github.com/rhkdguskim/buildercli.git
-cd buildercli
+git clone https://github.com/rhkdguskim/lazybuilder.git
+cd lazybuilder
 npm install
 npm run build
 npm link
 ```
 
-### Run After Install
+### Development (no install)
 
 ```bash
-# Global command (available anywhere after install)
-buildercli
-
-# Or use the alias
-lazybuild
-```
-
-### Run Without Install (Development)
-
-```bash
-git clone https://github.com/rhkdguskim/buildercli.git
-cd buildercli
+git clone https://github.com/rhkdguskim/lazybuilder.git
+cd lazybuilder
 npm install
 npm run dev
 ```
@@ -71,7 +79,7 @@ npm run dev
 Launch the TUI:
 
 ```bash
-buildercli
+lazybuilder
 ```
 
 On startup, the tool will:
@@ -110,7 +118,7 @@ On startup, the tool will:
 ## Uninstall
 
 ```bash
-npm unlink -g lazybuild
+npm unlink -g lazybuilder
 ```
 
 ## Tech Stack

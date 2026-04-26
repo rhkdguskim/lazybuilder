@@ -1,4 +1,4 @@
-# Architecture — for agents modifying LazyBuild itself
+# Architecture — for agents modifying LazyBuilder itself
 
 Read this before opening a PR against `src/`.
 
@@ -120,7 +120,7 @@ src/
 | New diagnostic rule | `domain/rules/<area>Rules.ts` (one new function) + `DiagnosticsService` already calls it | snapshot golden test |
 | New parser pattern | `infrastructure/parsers/<system>OutputParser.ts` | log fixture in `tests/fixtures/buildLogs/` |
 | New tab | `ui/tabs/<Name>Tab.tsx` + `App.tsx` register + `TabId` enum + store fields | E2E ink-testing-library scenario |
-| New CLI subcommand | `src/cli/<name>.ts` (P0 introduces this dir) + `bin/lazybuild.js` dispatch | CLI integration test |
+| New CLI subcommand | `src/cli/<name>.ts` (P0 introduces this dir) + `bin/lazybuilder.js` dispatch | CLI integration test |
 | New JSON kind | `docs/agents/output-schemas.md` + `domain/models/<Kind>.ts` + emitter in `src/cli/<cmd>.ts` | snapshot test |
 
 ---
@@ -232,14 +232,14 @@ Once headless CLI ships, `package.json` will declare:
 }
 ```
 
-`dist/index.ts` will re-export `EnvironmentService`, `ProjectScanService`, `DiagnosticsService`, `BuildService`. This lets bots embed LazyBuild as a library when CLI roundtrip is too slow.
+`dist/index.ts` will re-export `EnvironmentService`, `ProjectScanService`, `DiagnosticsService`, `BuildService`. This lets bots embed LazyBuilder as a library when CLI roundtrip is too slow.
 
 ---
 
 ## 9. Observability (planned)
 
 - `Logger` port (no-op in TUI, NDJSON-to-file when `--debug`)
-- Path: `${BUILDERCLI_HOME ?? ~/.buildercli}/logs/<isoTimestamp>.ndjson`
+- Path: `${LAZYBUILDER_HOME ?? ~/.lazybuilder}/logs/<isoTimestamp>.ndjson`
 - Redaction: PATH, USERNAME, hostname masked by default; opt out with `--no-redact`
 - Instrumented points: detector start/end, adapter resolve, ProcessRunner spawn/exit, UpdateChecker probe
 
@@ -271,5 +271,5 @@ Once headless CLI ships, `package.json` will declare:
 ## 12. Versioning
 
 - Binary: SemVer in `package.json`.
-- Schema: `buildercli/v1` independent of binary version. v1 ships for at least one major; v2 lives alongside v1 for one minor.
+- Schema: `lazybuilder/v1` independent of binary version. v1 ships for at least one major; v2 lives alongside v1 for one minor.
 - TUI hotkeys are part of the user contract — changing them is a minor bump and must be in CHANGELOG.

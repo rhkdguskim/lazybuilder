@@ -1,12 +1,15 @@
 import React from 'react';
 import { Box, Text } from 'ink';
+import { legacyWindowsConsole, symbols } from '../themes/colors.js';
 
 interface ProgressPanelProps {
   label: string;
   status: 'scanning' | 'done' | 'error' | 'idle';
 }
 
-const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const spinnerFrames = legacyWindowsConsole
+  ? ['|', '/', '-', '\\']
+  : ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 export const ProgressPanel: React.FC<ProgressPanelProps> = ({ label, status }) => {
   const [frame, setFrame] = React.useState(0);
@@ -20,8 +23,8 @@ export const ProgressPanel: React.FC<ProgressPanelProps> = ({ label, status }) =
   return (
     <Box>
       {status === 'scanning' && <Text color="cyan">{spinnerFrames[frame]} </Text>}
-      {status === 'done' && <Text color="green">✔ </Text>}
-      {status === 'error' && <Text color="red">✘ </Text>}
+      {status === 'done' && <Text color="green">{symbols.ok} </Text>}
+      {status === 'error' && <Text color="red">{symbols.error} </Text>}
       {status === 'idle' && <Text color="gray">○ </Text>}
       <Text>{label}</Text>
     </Box>

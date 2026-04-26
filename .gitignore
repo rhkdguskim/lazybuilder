@@ -24,3 +24,6 @@ coverage/
 # Logs
 *.log
 npm-debug.log*
+
+# OMC session state
+.omc/

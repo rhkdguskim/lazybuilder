@@ -1,9 +1,9 @@
-# LazyBuild for .NET / MSBuild TUI - 요구사항 명세서
+# LazyBuilder for .NET / MSBuild TUI - 요구사항 명세서
 
 ## 1. 문서 개요
 
 ### 1.1 시스템명
-가칭: LazyBuild for .NET / MSBuild TUI
+가칭: LazyBuilder for .NET / MSBuild TUI
 
 ### 1.2 목적
 개발자가 Visual Studio IDE를 실행하지 않고도 터미널 환경에서 다음을 수행할 수 있도록 지원한다.

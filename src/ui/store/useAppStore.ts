@@ -8,6 +8,7 @@ import type { BuildStatus } from '../../domain/enums.js';
 
 export type TabId = 'overview' | 'environment' | 'projects' | 'build' | 'diagnostics' | 'logs' | 'history' | 'settings';
 export type ScanStatus = 'idle' | 'scanning' | 'done' | 'error';
+export type BuildTargetFilter = 'all' | 'solutions' | 'projects' | 'dotnet' | 'msbuild' | 'cmake' | 'cpp';
 
 interface AppState {
   // Tab navigation
@@ -47,12 +48,18 @@ interface AppState {
 
   // Build settings (persisted across tab switches)
   buildTargetIdx: number;
+  buildTargetQuery: string;
+  buildTargetFilter: BuildTargetFilter;
+  buildSearchActive: boolean;
   buildConfigIdx: number;
   buildPlatformIdx: number;
   buildVerbosityIdx: number;
   buildParallel: boolean;
   buildDevShell: boolean;
   setBuildTargetIdx: (idx: number) => void;
+  setBuildTargetQuery: (query: string) => void;
+  setBuildTargetFilter: (filter: BuildTargetFilter) => void;
+  setBuildSearchActive: (active: boolean) => void;
   setBuildConfigIdx: (idx: number) => void;
   setBuildPlatformIdx: (idx: number) => void;
   setBuildVerbosityIdx: (idx: number) => void;
@@ -111,12 +118,18 @@ export const useAppStore = create<AppState>((set) => ({
 
   // Build settings
   buildTargetIdx: 0,
+  buildTargetQuery: '',
+  buildTargetFilter: 'all',
+  buildSearchActive: false,
   buildConfigIdx: 0,
   buildPlatformIdx: 0,
   buildVerbosityIdx: 1,
   buildParallel: true,
   buildDevShell: false,
   setBuildTargetIdx: (idx) => set({ buildTargetIdx: idx }),
+  setBuildTargetQuery: (query) => set({ buildTargetQuery: query }),
+  setBuildTargetFilter: (filter) => set({ buildTargetFilter: filter }),
+  setBuildSearchActive: (active) => set({ buildSearchActive: active }),
   setBuildConfigIdx: (idx) => set({ buildConfigIdx: idx }),
   setBuildPlatformIdx: (idx) => set({ buildPlatformIdx: idx }),
   setBuildVerbosityIdx: (idx) => set({ buildVerbosityIdx: idx }),

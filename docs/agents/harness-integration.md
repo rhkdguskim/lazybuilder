@@ -1,12 +1,12 @@
-# Harness Integration — LazyBuild as a tool inside an AI dev loop
+# Harness Integration — LazyBuilder as a tool inside an AI dev loop
 
-This page is the answer to: *"how do we make LazyBuild a first-class tool in an AI-driven C++/C# development workflow, at enterprise scale?"*
+This page is the answer to: *"how do we make LazyBuilder a first-class tool in an AI-driven C++/C# development workflow, at enterprise scale?"*
 
 ---
 
 ## 1. The mental model
 
-LazyBuild is one of three "compile-time" tools an AI agent needs when developing C++/C#:
+LazyBuilder is one of three "compile-time" tools an AI agent needs when developing C++/C#:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -15,7 +15,7 @@ LazyBuild is one of three "compile-time" tools an AI agent needs when developing
 │  EDIT          ←── code editor / agent edits files              │
 │   │                                                             │
 │   ▼                                                             │
-│  COMPILE       ←── LazyBuild  (this tool) ◀── env oracle, too   │
+│  COMPILE       ←── LazyBuilder  (this tool) ◀── env oracle, too   │
 │   │                                                             │
 │   ▼                                                             │
 │  TEST          ←── dotnet test / ctest                          │
@@ -25,9 +25,9 @@ LazyBuild is one of three "compile-time" tools an AI agent needs when developing
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The agent reaches for LazyBuild whenever it needs to **answer a question that depends on the local toolchain or build state**.
+The agent reaches for LazyBuilder whenever it needs to **answer a question that depends on the local toolchain or build state**.
 
-LazyBuild does **not**:
+LazyBuilder does **not**:
 - run tests (delegate to `dotnet test`, `vstest`, `ctest`)
 - format / lint code
 - manage source control
@@ -37,7 +37,7 @@ This narrowness is a feature, not a limitation. It keeps the contract small.
 
 ---
 
-## 2. Where LazyBuild plugs in (5 surfaces)
+## 2. Where LazyBuilder plugs in (5 surfaces)
 
 | # | Surface | Who calls it | When |
 |---|---|---|---|
@@ -58,7 +58,7 @@ Each surface uses the same headless contract; only the orchestration differs.
 ```jsonc
 [
   {
-    "name": "lazybuild_diagnose",
+    "name": "lazybuilder_diagnose",
     "description": "Probe build environment and project state. Returns a DiagnoseReport with env, projects, solutions, and diagnostics. Call this before suggesting any build command.",
     "input_schema": {
       "type": "object",
@@ -69,7 +69,7 @@ Each surface uses the same headless contract; only the orchestration differs.
     }
   },
   {
-    "name": "lazybuild_inspect",
+    "name": "lazybuilder_inspect",
     "description": "Inspect a single project file (sln/csproj/vcxproj/CMakeLists.txt). Returns ProjectInfo with recommendedCommand.",
     "input_schema": {
       "type": "object",
@@ -78,7 +78,7 @@ Each surface uses the same headless contract; only the orchestration differs.
     }
   },
   {
-    "name": "lazybuild_build",
+    "name": "lazybuilder_build",
     "description": "Execute a build. Returns BuildResult with structured errors/warnings on failure. Stream logs are not returned to the model — only the summary.",
     "input_schema": {
       "type": "object",
@@ -98,12 +98,12 @@ Each surface uses the same headless contract; only the orchestration differs.
 
 The runner that exposes these tools to the model **must**:
 
-1. Run LazyBuild with `BUILDERCLI_AGENT=1`.
+1. Run LazyBuilder with `LAZYBUILDER_AGENT=1`.
 2. Capture stdout (envelope) — return as `tool_result`.
 3. Discard stderr or attach as `tool_result.stderr` for debugging only — never as primary content.
 4. **Truncate `BuildResult.errors[]` to top 5 + count of remaining**. Models do not benefit from 200 errors.
 5. Drop `BuildLog` entries entirely — only return `BuildEvent.diagnostic` and final `BuildResult`.
-6. Surface the agent's intent to the user *before* running `lazybuild_build`. Builds are observable side effects (touch fs, spawn processes).
+6. Surface the agent's intent to the user *before* running `lazybuilder_build`. Builds are observable side effects (touch fs, spawn processes).
 
 ### 3.3 Context budget
 
@@ -139,12 +139,12 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - name: lazybuild self-check
-        run: node bin/lazybuild.js self-check --json
-      - name: lazybuild diagnose (smoke)
-        run: node bin/lazybuild.js diagnose --json > diagnose.json
+      - name: lazybuilder self-check
+        run: node bin/lazybuilder.js self-check --json
+      - name: lazybuilder diagnose (smoke)
+        run: node bin/lazybuilder.js diagnose --json > diagnose.json
       - uses: actions/upload-artifact@v4
-        with: { name: lazybuild-${{ matrix.os }}-node${{ matrix.node }}, path: diagnose.json }
+        with: { name: lazybuilder-${{ matrix.os }}-node${{ matrix.node }}, path: diagnose.json }
 ```
 
 ### 4.2 PR-build bot
@@ -152,13 +152,13 @@ jobs:
 A Claude/GPT bot that on PR open:
 
 1. Checks out the branch
-2. Runs `buildercli diagnose --json` — fails fast if env not ready
-3. Runs `buildercli scan projects --json` — produces project map
-4. For each changed project (from `git diff --name-only` ∩ `projects[*].path`), runs `buildercli build <project> -c Debug --ndjson-stream`
+2. Runs `lazybuilder diagnose --json` — fails fast if env not ready
+3. Runs `lazybuilder scan projects --json` — produces project map
+4. For each changed project (from `git diff --name-only` ∩ `projects[*].path`), runs `lazybuilder build <project> -c Debug --ndjson-stream`
 5. Aggregates `errors[]` across builds
 6. Posts a single PR comment with a deduped error table
 
-The bot's "tool" is just a shell script wrapping LazyBuild. **No code is in the bot — the contract is in LazyBuild.**
+The bot's "tool" is just a shell script wrapping LazyBuilder. **No code is in the bot — the contract is in LazyBuilder.**
 
 ---
 
@@ -168,7 +168,7 @@ The bot's "tool" is just a shell script wrapping LazyBuild. **No code is in the 
 # scripts/onboarding-check.sh
 #!/usr/bin/env bash
 set -e
-out=$(buildercli diagnose --json --severity error)
+out=$(lazybuilder diagnose --json --severity error)
 errors=$(echo "$out" | jq '.data.diagnostics | map(select(.severity == "error"))')
 count=$(echo "$errors" | jq 'length')
 if [ "$count" -gt 0 ]; then
@@ -179,7 +179,7 @@ fi
 echo "✓ Ready to build"
 ```
 
-This script is what a new engineer runs on day one. The bot wrapping it can offer to **install** missing tools (using a separate package manager — LazyBuild only detects).
+This script is what a new engineer runs on day one. The bot wrapping it can offer to **install** missing tools (using a separate package manager — LazyBuilder only detects).
 
 ---
 
@@ -187,43 +187,43 @@ This script is what a new engineer runs on day one. The bot wrapping it can offe
 
 When a user files "my build failed":
 
-1. Triage bot asks for `~/.buildercli/logs/last.ndjson` (planned: --debug mode)
-2. Re-runs `buildercli build` with the same profile in a clean container
+1. Triage bot asks for `~/.lazybuilder/logs/last.ndjson` (planned: --debug mode)
+2. Re-runs `lazybuilder build` with the same profile in a clean container
 3. Compares `BuildResult.errors[]` between user and clean environment
 4. If different → environment-specific bug; surfaces the env diff
 5. If same → reproducible code bug; assigns to dev
 
-LazyBuild's structured output makes this comparison **mechanical**, not fuzzy.
+LazyBuilder's structured output makes this comparison **mechanical**, not fuzzy.
 
 ---
 
 ## 7. The enterprise scaling axis
 
-To make LazyBuild dependable at scale, we need 4 properties on top of the headless CLI:
+To make LazyBuilder dependable at scale, we need 4 properties on top of the headless CLI:
 
 ### 7.1 Versioned schema (already in the contract)
-- Every payload tagged `buildercli/v1`. Bots pin a major version. Already specified — see [`output-schemas.md`](output-schemas.md) § Compatibility promise.
+- Every payload tagged `lazybuilder/v1`. Bots pin a major version. Already specified — see [`output-schemas.md`](output-schemas.md) § Compatibility promise.
 
 ### 7.2 Reproducibility
 - A `--snapshot` mode that emits **a single self-describing JSON** of env+projects+result. Replayable in a clean container with `--from-snapshot <file>` so support tickets stop being lossy. (🔭 future)
 
 ### 7.3 Observability
-- `--debug` writes NDJSON to `~/.buildercli/logs/<ts>.ndjson` with PII redaction (PATH, USERNAME, hostname). Single attachment for any bug report. Spec in `architecture.md` § Observability.
+- `--debug` writes NDJSON to `~/.lazybuilder/logs/<ts>.ndjson` with PII redaction (PATH, USERNAME, hostname). Single attachment for any bug report. Spec in `architecture.md` § Observability.
 
 ### 7.4 Multi-tenant safety
-- Profiles & history under `BUILDERCLI_HOME` (defaults to `~/.buildercli`), no global writes outside that dir. Already correct in design — codify in tests.
+- Profiles & history under `LAZYBUILDER_HOME` (defaults to `~/.lazybuilder`), no global writes outside that dir. Already correct in design — codify in tests.
 
 ---
 
 ## 8. Agent loop patterns
 
 ### Pattern A: "Edit-Verify"
-Each edit produces one `lazybuild_build` call. Loop bounded to 3 attempts (see Recipe R10).
+Each edit produces one `lazybuilder_build` call. Loop bounded to 3 attempts (see Recipe R10).
 
 ### Pattern B: "Explore-Plan-Build"
-1. `lazybuild_diagnose` once at session start
-2. `lazybuild_inspect` per project the user mentions
-3. `lazybuild_build` only after user confirms the plan
+1. `lazybuilder_diagnose` once at session start
+2. `lazybuilder_inspect` per project the user mentions
+3. `lazybuilder_build` only after user confirms the plan
 
 This is the default for Claude Code-style agents. Frugal on tool calls.
 
@@ -249,10 +249,10 @@ Snapshot env at session start. Re-snapshot when user reports "now it's broken." 
 | P1 | Profiles disk-backed | R7 |
 | P1 | `history` subcommand | Triage |
 | P2 | Programmatic ESM exports (`exports` map in `package.json`) | Library use |
-| P2 | `lazybuild watch` (auto-rebuild) | Edit-Verify loop without tool re-spawn |
+| P2 | `lazybuilder watch` (auto-rebuild) | Edit-Verify loop without tool re-spawn |
 | P2 | MCP server wrapper | Direct tool registration with MCP-aware agents |
 
-P0 set is what turns LazyBuild from a TUI into a tool. Everything else is leverage.
+P0 set is what turns LazyBuilder from a TUI into a tool. Everything else is leverage.
 
 ---
 
@@ -260,11 +260,11 @@ P0 set is what turns LazyBuild from a TUI into a tool. Everything else is levera
 
 If a Claude Code session for a C++/C# repo can:
 
-1. Boot, scan with one `lazybuild_diagnose` call
-2. Plan a fix with `lazybuild_inspect`
-3. Verify the fix with `lazybuild_build`
+1. Boot, scan with one `lazybuilder_diagnose` call
+2. Plan a fix with `lazybuilder_inspect`
+3. Verify the fix with `lazybuilder_build`
 4. Loop ≤ 3 times on failure
 5. Stay under 5 kB tool-context per round-trip
 6. Never freelance a `dotnet`/`msbuild` command directly
 
-… then LazyBuild has done its job as the harness's compile-time oracle. That's the bar.
+… then LazyBuilder has done its job as the harness's compile-time oracle. That's the bar.

@@ -55,7 +55,7 @@ export class DevShellRunner extends ProcessRunner {
 
   /** Create a temporary .bat file and execute it — no quoting issues */
   private startViaBat(setupCmd: string, buildCmd: string, cwd?: string): void {
-    const batPath = join(tmpdir(), `lazybuild_${Date.now()}.bat`);
+    const batPath = join(tmpdir(), `lazybuilder_${Date.now()}.bat`);
     const batContent = [
       '@echo off',
       'chcp 65001 >nul',
