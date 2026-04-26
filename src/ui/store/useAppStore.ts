@@ -5,6 +5,11 @@ import type { DiagnosticItem } from '../../domain/models/DiagnosticItem.js';
 import type { BuildResult } from '../../domain/models/BuildResult.js';
 import type { LogEntry } from '../../domain/models/LogEntry.js';
 import type { BuildStatus } from '../../domain/enums.js';
+import {
+  nextNotificationId,
+  type Notification,
+  type PushNotificationInput,
+} from './notifications.js';
 
 export type TabId = 'overview' | 'environment' | 'projects' | 'build' | 'diagnostics' | 'logs' | 'history' | 'settings';
 export type ScanStatus = 'idle' | 'scanning' | 'done' | 'error';
@@ -31,6 +36,13 @@ interface AppState {
   projectScanStatus: ScanStatus;
   setProjects: (projects: ProjectInfo[], solutions: SolutionInfo[]) => void;
   setProjectScanStatus: (status: ScanStatus) => void;
+
+  // Solution-group expansion (shared by Projects + Build tabs; persists across tab switches)
+  expandedSolutions: Record<string, boolean>;
+  toggleSolutionExpanded: (filePath: string) => void;
+  setSolutionExpanded: (filePath: string, expanded: boolean) => void;
+  expandAllSolutions: (filePaths: string[]) => void;
+  collapseAllSolutions: () => void;
 
   // Diagnostics
   diagnostics: DiagnosticItem[];
@@ -74,6 +86,16 @@ interface AppState {
   logEntries: LogEntry[];
   appendLogEntries: (entries: LogEntry[]) => void;
   clearLogs: () => void;
+
+  // Notifications / toast layer
+  notifications: Notification[];
+  pushNotification: (input: PushNotificationInput) => string;
+  dismissNotification: (id: string) => void;
+  clearNotifications: () => void;
+
+  // Focused area within the active tab — drives contextual key hints + visual focus rings.
+  focusArea: string | null;
+  setFocusArea: (area: string | null) => void;
 }
 
 const MAX_LOG_ENTRIES = 50000;
@@ -99,6 +121,22 @@ export const useAppStore = create<AppState>((set) => ({
   projectScanStatus: 'idle',
   setProjects: (projects, solutions) => set({ projects, solutions }),
   setProjectScanStatus: (status) => set({ projectScanStatus: status }),
+
+  // Solution expansion — default collapsed (empty record).
+  expandedSolutions: {},
+  toggleSolutionExpanded: (filePath) => set((state) => ({
+    expandedSolutions: {
+      ...state.expandedSolutions,
+      [filePath]: !state.expandedSolutions[filePath],
+    },
+  })),
+  setSolutionExpanded: (filePath, expanded) => set((state) => ({
+    expandedSolutions: { ...state.expandedSolutions, [filePath]: expanded },
+  })),
+  expandAllSolutions: (filePaths) => set(() => ({
+    expandedSolutions: Object.fromEntries(filePaths.map((p) => [p, true])),
+  })),
+  collapseAllSolutions: () => set({ expandedSolutions: {} }),
 
   // Diagnostics
   diagnostics: [],
@@ -147,4 +185,22 @@ export const useAppStore = create<AppState>((set) => ({
     return { logEntries: combined.length > MAX_LOG_ENTRIES ? combined.slice(-MAX_LOG_ENTRIES) : combined };
   }),
   clearLogs: () => set({ logEntries: [] }),
+
+  // Notifications
+  notifications: [],
+  pushNotification: (input) => {
+    const id = nextNotificationId();
+    set((state) => ({
+      notifications: [{ id, ...input }, ...state.notifications].slice(0, 8),
+    }));
+    return id;
+  },
+  dismissNotification: (id) => set((state) => ({
+    notifications: state.notifications.filter(n => n.id !== id),
+  })),
+  clearNotifications: () => set({ notifications: [] }),
+
+  // Focus
+  focusArea: null,
+  setFocusArea: (area) => set({ focusArea: area }),
 }));

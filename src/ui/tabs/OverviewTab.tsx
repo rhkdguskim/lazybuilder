@@ -1,12 +1,13 @@
 import React from 'react';
-import { Box, Text, useStdout } from 'ink';
+import { Box, useStdout } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { StatusBadge } from '../components/StatusBadge.js';
 import { KeyValueTable } from '../components/KeyValueTable.js';
-import { ProgressPanel } from '../components/ProgressPanel.js';
-import { PageHeader, Panel } from '../components/index.js';
+import { PageHeader, Panel, LoadingState, ErrorState, KeyHints, TabFrame } from '../components/index.js';
+import { theme } from '../themes/theme.js';
 import { compactPath } from '../utils/text.js';
 import type { Severity } from '../../domain/enums.js';
+import { Text } from 'ink';
 
 export const OverviewTab: React.FC = () => {
   const { stdout } = useStdout();
@@ -19,17 +20,23 @@ export const OverviewTab: React.FC = () => {
 
   if (envStatus === 'scanning' || envStatus === 'idle') {
     return (
-      <Box flexDirection="column" padding={1}>
-        <ProgressPanel label="Scanning environment..." status="scanning" />
-      </Box>
+      <TabFrame>
+        <PageHeader title="Overview" subtitle="Build environment readiness and the next safe action." />
+        <LoadingState label="Scanning environment" hint="Detecting toolchain and projects." />
+      </TabFrame>
     );
   }
 
   if (!snapshot) {
     return (
-      <Box padding={1}>
-        <Text color="red">Failed to scan environment</Text>
-      </Box>
+      <TabFrame>
+        <PageHeader title="Overview" subtitle="Build environment readiness and the next safe action." />
+        <ErrorState
+          title="Failed to scan environment"
+          hint="Open Settings and try Reload Environment."
+          actions={[{ key: '8', label: 'Settings' }]}
+        />
+      </TabFrame>
     );
   }
 
@@ -80,7 +87,7 @@ export const OverviewTab: React.FC = () => {
   ];
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1} overflowY="hidden">
+    <TabFrame>
       <PageHeader
         title="Overview"
         subtitle="Build environment readiness and the next safe action."
@@ -89,11 +96,13 @@ export const OverviewTab: React.FC = () => {
       <Box flexDirection="row" flexShrink={0} overflow="hidden">
         <Text wrap="truncate">
           <Text bold color={readiness.color}>{readiness.label}</Text>
-          <Text color="gray"> | projects </Text><Text bold color="cyan">{projects.length}</Text>
-          <Text color="gray"> | diagnostics </Text>
-          <Text color={errorCount > 0 ? 'red' : 'green'}>{errorCount}E</Text>
-          <Text color={warnCount > 0 ? 'yellow' : 'gray'}> {warnCount}W</Text>
-          <Text color="gray"> | next </Text><Text color="cyan">{nextStep.title}</Text>
+          <Text color={theme.color.text.muted as any}> · projects </Text>
+          <Text bold color={theme.color.accent.primary as any}>{projects.length}</Text>
+          <Text color={theme.color.text.muted as any}> · diagnostics </Text>
+          <Text color={(errorCount > 0 ? theme.color.status.danger : theme.color.status.ok) as any}>{errorCount}E</Text>
+          <Text color={(warnCount > 0 ? theme.color.status.warning : theme.color.text.muted) as any}> {warnCount}W</Text>
+          <Text color={theme.color.text.muted as any}> · next </Text>
+          <Text color={theme.color.accent.primary as any}>{nextStep.title}</Text>
         </Text>
       </Box>
 
@@ -133,16 +142,37 @@ export const OverviewTab: React.FC = () => {
           overflowY="hidden"
           marginTop={isVeryNarrow ? 1 : 0}
         >
-          <Panel title="Next Step & System" borderColor={readiness.color} minHeight={10} flexGrow={1}>
+          <Panel
+            title="Next Step & System"
+            status={errorCount > 0 ? 'danger' : warnCount > 0 ? 'warning' : 'ok'}
+            minHeight={10}
+            flexGrow={1}
+          >
             <Text bold color={readiness.color} wrap="truncate">{nextStep.title}</Text>
-            <Text color="gray" wrap="truncate">{nextStep.detail}</Text>
-            <Text color="cyan" wrap="truncate">Press {nextStep.command} to continue</Text>
+            <Text color={theme.color.text.muted as any} wrap="truncate">{nextStep.detail}</Text>
+            <Text color={theme.color.accent.primary as any} wrap="truncate">
+              Press {nextStep.command} to continue
+            </Text>
             <Box height={1} />
             <KeyValueTable rows={systemInfo} keyWidth={14} />
-            <Text color="gray" wrap="truncate">VS installations: {snapshot.visualStudio.installations.length}</Text>
+            <Text color={theme.color.text.muted as any} wrap="truncate">
+              VS installations: {snapshot.visualStudio.installations.length}
+            </Text>
           </Panel>
         </Box>
       </Box>
-    </Box>
+
+      <Box flexShrink={0}>
+        <KeyHints
+          context="Overview"
+          hints={[
+            { key: '1–8', label: 'Tab' },
+            { key: '[ ]', label: 'Prev/Next' },
+            { key: nextStep.command, label: nextStep.title, primary: true },
+            { key: '?', label: 'Help' },
+          ]}
+        />
+      </Box>
+    </TabFrame>
   );
 };

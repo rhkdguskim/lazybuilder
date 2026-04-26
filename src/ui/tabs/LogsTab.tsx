@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { reduceLogNavigation } from '../navigation/logNavigation.js';
-import { glyphs } from '../themes/colors.js';
+import { EmptyState, KeyHints, Panel, PageHeader, TabFrame } from '../components/index.js';
+import { theme } from '../themes/theme.js';
 
 type LogFilter = 'all' | 'error' | 'warning' | 'stderr';
 const FILTERS: Array<{ label: string; value: LogFilter }> = [
@@ -85,53 +86,73 @@ export const LogsTab: React.FC = () => {
     if (key.ctrl && input === 'l') clearLogs();
   }, { isActive: !!process.stdin.isTTY && isActiveTab });
 
+  const headerRightHint =
+    `${following ? theme.glyphs.follow : theme.glyphs.paused} · ${filtered.length}/${logEntries.length} lines`;
   return (
-    <Box flexDirection="column" padding={1} flexGrow={1} overflowY="hidden">
-      {/* Header */}
-      <Box flexDirection="row" justifyContent="space-between">
-        <Box>
-          <Text bold color="cyan">Logs </Text>
+    <TabFrame>
+      <PageHeader
+        title="Logs"
+        subtitle="Live build output, filtered."
+        rightHint={headerRightHint}
+      />
+
+      {/* Filter pills + counts */}
+      <Box flexDirection="row" justifyContent="space-between" flexShrink={0} marginBottom={1}>
+        <Box flexDirection="row">
           {FILTERS.map((f, i) => (
             <Box key={f.label} marginRight={1}>
-              <Text inverse={i === filterIdx} color={i === filterIdx ? 'blue' : 'gray'}>
+              <Text
+                inverse={i === filterIdx}
+                color={(i === filterIdx ? theme.color.accent.primary : theme.color.text.muted) as any}
+                bold={i === filterIdx}
+              >
                 {' '}{f.label}{' '}
               </Text>
             </Box>
           ))}
         </Box>
         <Box>
-          <Text color={following ? 'green' : 'gray'}>
-            {following ? glyphs.follow : glyphs.paused}
-          </Text>
-          <Text color="gray"> | {filtered.length}/{logEntries.length} lines</Text>
-          <Text color={errorCount > 0 ? 'red' : 'gray'}> {errorCount}E</Text>
-          <Text color={warnCount > 0 ? 'yellow' : 'gray'}> {warnCount}W</Text>
+          <Text color={(errorCount > 0 ? theme.color.status.danger : theme.color.text.muted) as any}>{errorCount}E</Text>
+          <Text color={(warnCount > 0 ? theme.color.status.warning : theme.color.text.muted) as any}> {warnCount}W</Text>
         </Box>
       </Box>
 
-      {/* Log view — always renders same structure */}
-      <Box flexDirection="column" flexGrow={1} marginTop={1} borderStyle="single" paddingX={1} overflowY="hidden">
+      {/* Log view */}
+      <Panel title="Output" focused subtitle={following ? 'live · auto-follow' : 'paused — j/k to scroll, f to resume'} flexGrow={1}>
         {visible.length > 0 ? (
           visible.map((entry) => (
             <Text key={entry.index} color={
-              entry.level === 'error' ? 'red' :
-              entry.level === 'warning' ? 'yellow' :
-              entry.source === 'stderr' ? 'red' : undefined
+              entry.level === 'error' ? theme.color.status.danger :
+              entry.level === 'warning' ? theme.color.status.warning :
+              entry.source === 'stderr' ? theme.color.status.danger : undefined
             } wrap="truncate">
               {entry.text}
             </Text>
           ))
         ) : (
-          <Text color="gray">
-            {logEntries.length === 0 ? 'No build logs yet.' : 'No entries match filter.'}
-          </Text>
+          <EmptyState
+            title={logEntries.length === 0 ? 'No build logs yet' : 'No entries match filter'}
+            hint={logEntries.length === 0 ? 'Run a build to populate this view.' : 'Press h/l to switch filters.'}
+            actions={logEntries.length === 0
+              ? [{ key: '4', label: 'Open Build' }]
+              : [{ key: 'h/l', label: 'Change filter' }]}
+          />
         )}
-      </Box>
+      </Panel>
 
       {/* Footer */}
-      <Box marginTop={1}>
-        <Text color="gray">h/l: filter | j/k: scroll | g/G: top/bottom | f: follow | Ctrl+L: clear</Text>
+      <Box flexShrink={0}>
+        <KeyHints
+          context="Logs"
+          hints={[
+            { key: 'h/l', label: 'Filter' },
+            { key: 'j/k', label: 'Scroll' },
+            { key: 'g/G', label: 'Top/Bottom' },
+            { key: 'f', label: 'Follow' },
+            { key: '⌃L', label: 'Clear' },
+          ]}
+        />
       </Box>
-    </Box>
+    </TabFrame>
   );
 };

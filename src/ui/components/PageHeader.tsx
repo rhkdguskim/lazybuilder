@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text, useStdout } from 'ink';
+import { theme } from '../themes/theme.js';
 
 interface PageHeaderProps {
   title: string;
@@ -14,11 +15,17 @@ export const PageHeader: React.FC<PageHeaderProps> = ({ title, subtitle, rightHi
   return (
     <Box flexDirection="column" flexShrink={0} marginBottom={1} overflow="hidden">
       <Box flexDirection="row" justifyContent="space-between" overflow="hidden">
-        <Text bold color="cyan" wrap="truncate">{title}</Text>
-        {rightHint && !compact ? <Text color="gray" wrap="truncate">{rightHint}</Text> : null}
+        <Text bold color={theme.color.accent.primary as any} wrap="truncate">{title}</Text>
+        {rightHint && !compact ? (
+          <Text color={theme.color.text.muted as any} wrap="truncate">{rightHint}</Text>
+        ) : null}
       </Box>
-      {subtitle ? <Text color="gray" wrap="truncate">{subtitle}</Text> : null}
-      {rightHint && compact ? <Text color="gray" wrap="truncate">{rightHint}</Text> : null}
+      {subtitle ? (
+        <Text color={theme.color.text.muted as any} dimColor wrap="truncate">{subtitle}</Text>
+      ) : null}
+      {rightHint && compact ? (
+        <Text color={theme.color.text.muted as any} wrap="truncate">{rightHint}</Text>
+      ) : null}
     </Box>
   );
 };

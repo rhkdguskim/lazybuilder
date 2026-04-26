@@ -3,7 +3,8 @@ import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
 import { ScrollableList } from '../components/ScrollableList.js';
 import { reduceListSelection } from '../navigation/listNavigation.js';
-import { glyphs } from '../themes/colors.js';
+import { PageHeader, Panel, EmptyState, KeyHints, TabFrame } from '../components/index.js';
+import { theme, statusColor } from '../themes/theme.js';
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -23,6 +24,7 @@ export const HistoryTab: React.FC = () => {
   const isActiveTab = useAppStore(s => s.activeTab) === 'history';
   const history = useAppStore(s => s.buildHistory);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [focus, setFocus] = useState<'list' | 'detail'>('list');
 
   const ordered = useMemo(() => [...history].reverse(), [history]);
 
@@ -33,79 +35,134 @@ export const HistoryTab: React.FC = () => {
   }, [ordered.length, selectedIdx]);
 
   useInput((input, key) => {
+    if (key.tab) {
+      setFocus(f => f === 'list' ? 'detail' : 'list');
+      return;
+    }
+    if (focus === 'detail') {
+      if (key.escape || key.leftArrow || input === 'h') setFocus('list');
+      return;
+    }
     if (input === 'g') setSelectedIdx(i => reduceListSelection(i, ordered.length, 'top'));
     if (input === 'G') setSelectedIdx(i => reduceListSelection(i, ordered.length, 'bottom'));
     if (key.upArrow || input === 'k') setSelectedIdx(i => reduceListSelection(i, ordered.length, 'up'));
     if (key.downArrow || input === 'j') setSelectedIdx(i => reduceListSelection(i, ordered.length, 'down'));
+    if (key.rightArrow || input === 'l') setFocus('detail');
   }, { isActive: !!process.stdin.isTTY && isActiveTab });
 
   const selected = ordered[selectedIdx];
 
-  return (
-    <Box flexDirection="row" padding={1} flexGrow={1} overflowY="hidden">
-      <Box flexDirection="column" width="48%" paddingRight={2} overflowY="hidden">
-        <Text bold color="cyan">{'─── Build History ───'}</Text>
-        <Text color="gray">j/k or ↑↓ move, g/G jump</Text>
-        <Box height={1} />
+  const selectedSeverity =
+    selected?.status === 'success' ? 'ok' :
+    selected?.status === 'failure' ? 'danger' :
+    selected?.status === 'cancelled' ? 'warning' : 'neutral';
 
-        {ordered.length === 0 ? (
-          <Text color="gray">No build history yet. Run a build to see results here.</Text>
-        ) : (
-          <ScrollableList
-            selectedIdx={selectedIdx}
-            maxVisible={18}
-            onSelect={setSelectedIdx}
-            items={ordered.map((r, i) => {
-              const statusColor = r.status === 'success' ? 'green' : r.status === 'failure' ? 'red' : 'yellow';
-              return (
-                <Box key={i} flexDirection="row">
-                  <Text inverse={i === selectedIdx} color={statusColor as any}>
-                    {i === selectedIdx ? `${glyphs.play} ` : '  '}{formatTime(r.startTime)} {r.status.toUpperCase()}
-                  </Text>
-                  <Text color="gray"> {formatDuration(r.durationMs)} {r.errorCount}E/{r.warningCount}W</Text>
-                </Box>
-              );
-            })}
-          />
-        )}
+  return (
+    <TabFrame>
+      <PageHeader title="History" subtitle="Recent builds and their diagnostics." />
+
+      <Box flexDirection="row" flexGrow={1} overflowY="hidden">
+        <Box flexDirection="column" width="48%" paddingRight={2} overflowY="hidden">
+          <Panel
+            title={`Runs ${ordered.length}`}
+            focused={focus === 'list'}
+            subtitle={focus === 'list' ? 'j/k move · g/G jump · Tab → detail' : 'Tab to focus'}
+          >
+            {ordered.length === 0 ? (
+              <EmptyState
+                title="No build history yet"
+                hint="Run a build to populate this view."
+                actions={[{ key: '4', label: 'Open Build' }]}
+              />
+            ) : (
+              <ScrollableList
+                selectedIdx={selectedIdx}
+                maxVisible={18}
+                onSelect={setSelectedIdx}
+                items={ordered.map((r, i) => {
+                  const severity =
+                    r.status === 'success' ? 'ok' :
+                    r.status === 'failure' ? 'danger' :
+                    r.status === 'cancelled' ? 'warning' : 'neutral';
+                  const isSelected = i === selectedIdx;
+                  return (
+                    <Box key={i} flexDirection="row">
+                      <Text inverse={isSelected} color={statusColor(severity) as any}>
+                        {isSelected ? `${theme.glyphs.focus} ` : '  '}{formatTime(r.startTime)} {r.status.toUpperCase()}
+                      </Text>
+                      <Text color={theme.color.text.muted as any}> {formatDuration(r.durationMs)} · {r.errorCount}E/{r.warningCount}W</Text>
+                    </Box>
+                  );
+                })}
+              />
+            )}
+          </Panel>
+        </Box>
+
+        <Box flexDirection="column" flexGrow={1} overflowY="hidden">
+          <Panel
+            title="Selected Run"
+            focused={focus === 'detail'}
+            status={selected ? selectedSeverity : 'neutral'}
+            subtitle={selected ? selected.startTime.toISOString() : focus === 'detail' ? 'Esc/h → list · Tab to switch' : 'Pick a run from the left.'}
+          >
+            <DetailRow label="Status" value={selected?.status ?? '—'} color={statusColor(selectedSeverity)} />
+            <DetailRow label="Duration" value={selected ? formatDuration(selected.durationMs) : '—'} />
+            <DetailRow label="Exit code" value={selected ? (selected.exitCode === null ? 'N/A' : String(selected.exitCode)) : '—'} />
+            <DetailRow
+              label="Errors"
+              value={selected ? String(selected.errorCount) : '—'}
+              color={selected && selected.errorCount > 0 ? theme.color.status.danger : theme.color.text.muted}
+            />
+            <DetailRow
+              label="Warnings"
+              value={selected ? String(selected.warningCount) : '—'}
+              color={selected && selected.warningCount > 0 ? theme.color.status.warning : theme.color.text.muted}
+            />
+            <Box height={1} />
+            <Text bold>Diagnostics</Text>
+            <ScrollableList
+              selectedIdx={0}
+              maxVisible={8}
+              items={selected && (selected.errors.length > 0 || selected.warnings.length > 0)
+                ? [
+                    ...selected.errors.slice(0, 10).map((item, i) => (
+                      <Text key={`e-${i}`} color={theme.color.status.danger as any} wrap="truncate">{item.code}: {item.message}</Text>
+                    )),
+                    ...selected.warnings.slice(0, 10).map((item, i) => (
+                      <Text key={`w-${i}`} color={theme.color.status.warning as any} wrap="truncate">{item.code}: {item.message}</Text>
+                    )),
+                  ]
+                : [<Text key="none" color={theme.color.text.muted as any}>No diagnostics</Text>]
+              }
+            />
+          </Panel>
+        </Box>
       </Box>
 
-      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
-        <Text bold color="cyan">{'─── Selected Run ───'}</Text>
-        <Box height={1} />
-
-        <DetailRow label="Started" value={selected ? selected.startTime.toISOString() : '-'} />
-        <DetailRow label="Status" value={selected?.status ?? '-'} color={selected?.status === 'success' ? 'green' : selected?.status === 'failure' ? 'red' : 'gray'} />
-        <DetailRow label="Duration" value={selected ? formatDuration(selected.durationMs) : '-'} />
-        <DetailRow label="Exit Code" value={selected ? (selected.exitCode === null ? 'N/A' : String(selected.exitCode)) : '-'} />
-        <DetailRow label="Errors" value={selected ? String(selected.errorCount) : '-'} color={selected && selected.errorCount > 0 ? 'red' : 'gray'} />
-        <DetailRow label="Warnings" value={selected ? String(selected.warningCount) : '-'} color={selected && selected.warningCount > 0 ? 'yellow' : 'gray'} />
-        <Box height={1} />
-        <Text bold>Diagnostics</Text>
-        <ScrollableList
-          selectedIdx={0}
-          maxVisible={8}
-          items={selected && (selected.errors.length > 0 || selected.warnings.length > 0)
+      <Box flexShrink={0}>
+        <KeyHints
+          context={`History › ${focus === 'list' ? 'Runs' : 'Selected Run'}`}
+          hints={focus === 'list'
             ? [
-                ...selected.errors.slice(0, 10).map((item, i) => (
-                  <Text key={`e-${i}`} color="red" wrap="truncate">{item.code}: {item.message}</Text>
-                )),
-                ...selected.warnings.slice(0, 10).map((item, i) => (
-                  <Text key={`w-${i}`} color="yellow" wrap="truncate">{item.code}: {item.message}</Text>
-                )),
+                { key: 'j/k', label: 'Move' },
+                { key: 'g/G', label: 'Top/Bottom' },
+                { key: 'Tab', label: 'Detail' },
               ]
-            : [<Text key="none" color="gray">No diagnostics</Text>]
-          }
+            : [
+                { key: 'Tab', label: 'Runs', primary: true },
+                { key: 'Esc/h', label: 'Runs' },
+              ]}
         />
       </Box>
-    </Box>
+    </TabFrame>
   );
 };
 
 const DetailRow: React.FC<{ label: string; value: string; color?: string }> = ({ label, value, color }) => (
   <Box flexDirection="row">
     <Box width={12}>
-      <Text color="gray">{label}</Text>
+      <Text color={theme.color.text.muted as any}>{label}</Text>
     </Box>
     <Text color={color as any}>{value}</Text>
   </Box>

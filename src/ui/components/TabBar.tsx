@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Text, useStdout } from 'ink';
+import { theme } from '../themes/theme.js';
 
 export interface TabDef {
   id: string;
@@ -37,6 +38,7 @@ export const TabBar: React.FC<TabBarProps> = ({ tabs, activeTab }) => {
       borderLeft={false}
       borderRight={false}
       borderTop={false}
+      borderColor={theme.color.border.subtle as any}
       paddingX={1}
       flexShrink={0}
       overflow="hidden"
@@ -54,7 +56,7 @@ export const TabBar: React.FC<TabBarProps> = ({ tabs, activeTab }) => {
           <Box key={tab.id} marginRight={1}>
             <Text
               bold={isActive}
-              color={isActive ? 'cyan' : 'gray'}
+              color={(isActive ? theme.color.accent.primary : theme.color.text.muted) as any}
               inverse={isActive}
               wrap="truncate"
             >

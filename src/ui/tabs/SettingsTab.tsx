@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
-import { PageHeader, Panel } from '../components/index.js';
-import { glyphs, symbols } from '../themes/colors.js';
+import { PageHeader, Panel, KeyHints, TabFrame } from '../components/index.js';
+import { theme } from '../themes/theme.js';
 import { EnvironmentService } from '../../application/EnvironmentService.js';
 import { ProjectScanService } from '../../application/ProjectScanService.js';
 import { DiagnosticsService } from '../../application/DiagnosticsService.js';
@@ -90,25 +90,28 @@ export const SettingsTab: React.FC = () => {
   }, { isActive: !!process.stdin.isTTY && isActiveTab });
 
   return (
-    <Box flexDirection="column" padding={1} flexGrow={1} overflowY="hidden">
+    <TabFrame>
       <PageHeader
         title="Settings"
         subtitle="Manage environment scanning and application preferences."
-        rightHint="j/k move | Enter execute"
       />
 
-      <Panel title="Actions" focused={true} subtitle="Select an action and press Enter to run.">
+      <Panel title="Actions" focused subtitle="Select an action and press Enter to run.">
         <>
           {ACTIONS.map((action, i) => {
             const isSelected = i === selectedIdx;
             const isRunning = running === action.id;
             return (
               <Box key={action.id} flexDirection="row">
-                <Text inverse={isSelected} color={isSelected ? 'cyan' : undefined}>
-                  {isSelected ? ` ${glyphs.play} ` : '   '}
-                  {isRunning ? `${glyphs.running} ` : ''}{action.label}
+                <Text
+                  inverse={isSelected}
+                  color={(isSelected ? theme.color.accent.primary : undefined) as any}
+                  bold={isSelected}
+                >
+                  {isSelected ? `${theme.glyphs.focus} ` : '  '}
+                  {isRunning ? `${theme.glyphs.running} ` : ''}{action.label}
                 </Text>
-                <Text color="gray" wrap="truncate"> - {action.description}</Text>
+                <Text color={theme.color.text.muted as any} wrap="truncate"> · {action.description}</Text>
               </Box>
             );
           })}
@@ -116,20 +119,42 @@ export const SettingsTab: React.FC = () => {
       </Panel>
 
       <Box marginTop={1}>
-        <Text color={running ? 'yellow' : lastResult ? (lastResult.startsWith('Error') ? 'red' : 'green') : 'gray'}>
-          {running ? `Running: ${running}...` : lastResult ? (lastResult === 'Done' ? `${symbols.ok} Completed` : lastResult) : 'Ready'}
+        <Text
+          color={(running
+            ? theme.color.status.warning
+            : lastResult
+              ? (lastResult.startsWith('Error') ? theme.color.status.danger : theme.color.status.ok)
+              : theme.color.text.muted) as any}
+        >
+          {running
+            ? `Running: ${running}…`
+            : lastResult
+              ? (lastResult === 'Done' ? `${theme.symbols.ok} Completed` : lastResult)
+              : 'Ready'}
         </Text>
       </Box>
 
       <Box marginTop={1}>
         <Panel title="Info">
           <>
-            <Text color="gray">Working directory: {process.cwd()}</Text>
-            <Text color="gray">Environment scanned: {snapshot ? symbols.ok : symbols.error}</Text>
-            <Text color="gray">Projects found: {projects.length}</Text>
+            <Text color={theme.color.text.muted as any}>Working directory: {process.cwd()}</Text>
+            <Text color={theme.color.text.muted as any}>
+              Environment scanned: {snapshot ? theme.symbols.ok : theme.symbols.error}
+            </Text>
+            <Text color={theme.color.text.muted as any}>Projects found: {projects.length}</Text>
           </>
         </Panel>
       </Box>
-    </Box>
+
+      <Box flexShrink={0} marginTop={1}>
+        <KeyHints
+          context="Settings"
+          hints={[
+            { key: 'j/k', label: 'Move' },
+            { key: 'Enter', label: 'Execute', primary: true },
+          ]}
+        />
+      </Box>
+    </TabFrame>
   );
 };

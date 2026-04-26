@@ -16,6 +16,7 @@ export function useBuild() {
   const appendLogEntries = useAppStore(s => s.appendLogEntries);
   const clearLogs = useAppStore(s => s.clearLogs);
   const setBuildCancelFn = useAppStore(s => s.setBuildCancelFn);
+  const pushNotification = useAppStore(s => s.pushNotification);
 
   const serviceRef = useRef<BuildService | null>(null);
 
@@ -63,13 +64,36 @@ export function useBuild() {
       setBuildResult(buildResult);
       addBuildHistory(buildResult);
       setBuildStatus(buildResult.status === 'success' ? 'success' : 'failure');
+
+      const seconds = (buildResult.durationMs / 1000).toFixed(1);
+      if (buildResult.status === 'success') {
+        pushNotification({
+          severity: 'ok',
+          title: 'Build succeeded',
+          detail: `${seconds}s · ${buildResult.warningCount}W`,
+          ttlMs: 5000,
+        });
+      } else {
+        pushNotification({
+          severity: 'danger',
+          title: 'Build failed',
+          detail: `${seconds}s · ${buildResult.errorCount}E ${buildResult.warningCount}W · exit ${buildResult.exitCode ?? '?'}`,
+          ttlMs: 8000,
+        });
+      }
     } catch {
       setBuildStatus('failure');
+      pushNotification({
+        severity: 'danger',
+        title: 'Build crashed',
+        detail: 'See Logs tab for details.',
+        ttlMs: 6000,
+      });
     } finally {
       setBuildCancelFn(null);
       setBuildStartTime(null);
     }
-  }, [snapshot, clearLogs, setBuildStatus, setBuildStartTime, setBuildResult, addBuildHistory, onLogEntry, flushLogs, setBuildCancelFn]);
+  }, [snapshot, clearLogs, setBuildStatus, setBuildStartTime, setBuildResult, addBuildHistory, onLogEntry, flushLogs, setBuildCancelFn, pushNotification]);
 
   const cancel = useCallback(async () => {
     if (serviceRef.current) {

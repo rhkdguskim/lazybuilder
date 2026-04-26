@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text, useStdout } from 'ink';
 import { useAppStore } from '../store/useAppStore.js';
+import { theme } from '../themes/theme.js';
 
 const statusText = (status: string, compact: boolean): string => {
   if (!compact) return status;
@@ -9,6 +10,17 @@ const statusText = (status: string, compact: boolean): string => {
   if (status === 'error') return 'err';
   return status;
 };
+
+const scanColor = (status: string) =>
+  status === 'done' ? theme.color.status.ok
+  : status === 'error' ? theme.color.status.danger
+  : theme.color.status.warning;
+
+const buildColor = (status: string | undefined) =>
+  status === 'success' ? theme.color.status.ok
+  : status === 'failure' ? theme.color.status.danger
+  : status === 'cancelled' ? theme.color.status.warning
+  : theme.color.text.muted;
 
 export const GlobalStatusBar: React.FC = () => {
   const { stdout } = useStdout();
@@ -22,35 +34,28 @@ export const GlobalStatusBar: React.FC = () => {
 
   const errors = diagnostics.filter(item => item.severity === 'error').length;
   const warnings = diagnostics.filter(item => item.severity === 'warning').length;
+  const muted = theme.color.text.muted;
 
   return (
     <Box paddingX={1} flexShrink={0} overflow="hidden">
       <Text wrap="truncate">
-        <Text color="gray">{compact ? 'scan ' : 'Scan '}</Text>
-        <Text color={envScanStatus === 'done' ? 'green' : envScanStatus === 'error' ? 'red' : 'yellow'}>
-          env:{statusText(envScanStatus, compact)}
-        </Text>
-        <Text color="gray"> | </Text>
-        <Text color={projectScanStatus === 'done' ? 'green' : projectScanStatus === 'error' ? 'red' : 'yellow'}>
-          proj:{statusText(projectScanStatus, compact)}
-        </Text>
-        <Text color="gray"> | </Text>
+        <Text color={muted as any}>{compact ? 'scan ' : 'Scan '}</Text>
+        <Text color={scanColor(envScanStatus) as any}>env:{statusText(envScanStatus, compact)}</Text>
+        <Text color={muted as any}> · </Text>
+        <Text color={scanColor(projectScanStatus) as any}>proj:{statusText(projectScanStatus, compact)}</Text>
+        <Text color={muted as any}> · </Text>
         <Text>{compact ? 'targets' : 'targets:'}</Text>
-        <Text bold color="cyan"> {projects.length}</Text>
-        <Text color="gray"> | </Text>
+        <Text bold color={theme.color.accent.primary as any}> {projects.length}</Text>
+        <Text color={muted as any}> · </Text>
         <Text>{compact ? 'diag' : 'diag:'}</Text>
-        <Text color={errors > 0 ? 'red' : 'green'}> {errors}E</Text>
-        <Text color="yellow"> {warnings}W</Text>
-        <Text color="gray"> | </Text>
+        <Text color={(errors > 0 ? theme.color.status.danger : theme.color.status.ok) as any}> {errors}E</Text>
+        <Text color={(warnings > 0 ? theme.color.status.warning : muted) as any}> {warnings}W</Text>
+        <Text color={muted as any}> · </Text>
         <Text>{compact ? 'logs' : 'logs:'}</Text>
         <Text bold> {logCount}</Text>
-        <Text color="gray"> | </Text>
+        <Text color={muted as any}> · </Text>
         <Text>{compact ? 'build' : 'last build:'}</Text>
-        <Text color={
-          buildResult?.status === 'success' ? 'green' :
-          buildResult?.status === 'failure' ? 'red' :
-          buildResult?.status === 'cancelled' ? 'yellow' : 'gray'
-        }>
+        <Text color={buildColor(buildResult?.status) as any}>
           {' '}{buildResult?.status ?? 'none'}
         </Text>
       </Text>

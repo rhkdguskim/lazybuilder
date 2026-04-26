@@ -1,6 +1,7 @@
 export { StatusBadge } from './StatusBadge.js';
 export { TabBar, type TabDef } from './TabBar.js';
 export { HelpBar } from './HelpBar.js';
+export { KeyHints, type KeyHint } from './KeyHints.js';
 export { SplitPane } from './SplitPane.js';
 export { KeyValueTable } from './KeyValueTable.js';
 export { ProgressPanel } from './ProgressPanel.js';
@@ -9,3 +10,10 @@ export { ShortcutOverlay } from './ShortcutOverlay.js';
 export { ScrollableList } from './ScrollableList.js';
 export { PageHeader } from './PageHeader.js';
 export { Panel } from './Panel.js';
+export { EmptyState } from './EmptyState.js';
+export { LoadingState } from './LoadingState.js';
+export { ErrorState } from './ErrorState.js';
+export { Toast } from './Toast.js';
+export { ScrollPane } from './ScrollPane.js';
+export { ToolchainModal } from './ToolchainModal.js';
+export { TabFrame } from './TabFrame.js';
