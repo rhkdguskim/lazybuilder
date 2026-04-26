@@ -7,10 +7,6 @@ import { ProjectFileParser } from './ProjectFileParser.js';
 // Project("{FAE04EC0-...}") = "MyApp", "MyApp\MyApp.csproj", "{GUID}"
 const PROJECT_LINE_REGEX = /^Project\("\{([^}]+)\}"\)\s*=\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"\{([^}]+)\}"/;
 
-// Solution configuration line:
-// Debug|x64 = Debug|x64
-const SOLUTION_CONFIG_REGEX = /^\s+(.+)\|(.+)\s*=\s*.+\|.+\s*$/;
-
 // Known project type GUIDs
 const GUID_CSHARP = 'FAE04EC0-301F-11D3-BF4B-00C04F79EFBC';
 const GUID_FSHARP = 'F2A71F9B-5D33-465A-A702-920D77279786';

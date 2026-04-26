@@ -1,4 +1,5 @@
 import { runCommand } from '../process/ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import type { ToolInfo } from '../../domain/models/ToolInfo.js';
 import { createToolInfo } from '../../domain/models/ToolInfo.js';
 import type { SdkInfo } from '../../domain/models/SdkInfo.js';
@@ -33,13 +34,13 @@ export class DotnetDetector {
   }
 
   private async detectTool(): Promise<ToolInfo> {
-    const result = await runCommand('dotnet', ['--version'], { timeout: 10000 });
+    const result = await runCommand('dotnet', ['--version'], { timeout: TIMEOUTS.TOOL_VERSION });
     if (result.exitCode !== 0) {
       return createToolInfo({ name: 'dotnet', detected: false, notes: ['dotnet not found in PATH'] });
     }
 
     const version = result.stdout.trim();
-    const pathResult = await runCommand(process.platform === 'win32' ? 'where' : 'which', ['dotnet'], { timeout: 5000 });
+    const pathResult = await runCommand(process.platform === 'win32' ? 'where' : 'which', ['dotnet'], { timeout: TIMEOUTS.QUICK_PROBE });
     const path = pathResult.stdout.trim().split('\n')[0] ?? null;
 
     return createToolInfo({
@@ -52,7 +53,7 @@ export class DotnetDetector {
   }
 
   private async listSdks(): Promise<SdkInfo[]> {
-    const result = await runCommand('dotnet', ['--list-sdks'], { timeout: 10000 });
+    const result = await runCommand('dotnet', ['--list-sdks'], { timeout: TIMEOUTS.TOOL_VERSION });
     if (result.exitCode !== 0) return [];
 
     return result.stdout
@@ -74,7 +75,7 @@ export class DotnetDetector {
   }
 
   private async listRuntimes(): Promise<SdkInfo[]> {
-    const result = await runCommand('dotnet', ['--list-runtimes'], { timeout: 10000 });
+    const result = await runCommand('dotnet', ['--list-runtimes'], { timeout: TIMEOUTS.TOOL_VERSION });
     if (result.exitCode !== 0) return [];
 
     return result.stdout
@@ -96,7 +97,7 @@ export class DotnetDetector {
   }
 
   private async listWorkloads(): Promise<string[]> {
-    const result = await runCommand('dotnet', ['workload', 'list'], { timeout: 15000 });
+    const result = await runCommand('dotnet', ['workload', 'list'], { timeout: TIMEOUTS.TOOL_LIST });
     if (result.exitCode !== 0) return [];
 
     const lines = result.stdout.split('\n');

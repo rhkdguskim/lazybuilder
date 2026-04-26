@@ -1,6 +1,7 @@
 import type { SdkInfo } from '../../domain/models/SdkInfo.js';
 import type { EnvironmentSnapshot } from '../../domain/models/EnvironmentSnapshot.js';
 import { runCommand } from '../process/ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -140,7 +141,7 @@ export class WindowsSdkDetector {
         const result = await runCommand(
           'reg',
           ['query', key, '/v', value],
-          { timeout: 5000 },
+          { timeout: TIMEOUTS.QUICK_PROBE },
         );
         if (result.exitCode !== 0) continue;
 
@@ -192,7 +193,7 @@ export class WindowsSdkDetector {
           const result = await runCommand(
             'reg',
             ['query', `HKLM\\SOFTWARE${wow}\\Microsoft\\Microsoft SDKs\\Windows\\${ver}`, '/v', 'InstallationFolder'],
-            { timeout: 3000 },
+            { timeout: TIMEOUTS.REGISTRY_PROBE },
           );
           if (result.exitCode !== 0) continue;
           const match = result.stdout.match(/REG_SZ\s+(.+)/);
@@ -206,7 +207,7 @@ export class WindowsSdkDetector {
     }
   }
 
-  private addIfNew(versions: SdkInfo[], version: string, path: string, source: string): void {
+  private addIfNew(versions: SdkInfo[], version: string, path: string, _source: string): void {
     if (versions.some(v => v.version === version && v.installedPath === path)) return;
     versions.push({
       sdkType: 'windows-sdk',

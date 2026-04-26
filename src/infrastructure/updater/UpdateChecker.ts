@@ -1,4 +1,5 @@
 import { runCommand } from '../process/ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
@@ -98,7 +99,7 @@ export class UpdateChecker {
   // ───── npm mode ─────
 
   private async checkNpm(): Promise<UpdateCheckResult | null> {
-    const view = await runCommand('npm', ['view', this.packageName, 'version'], { timeout: 10000 });
+    const view = await runCommand('npm', ['view', this.packageName, 'version'], { timeout: TIMEOUTS.TOOL_VERSION });
     if (view.exitCode !== 0) return null;
     const latest = view.stdout.trim();
     if (!/^\d+\.\d+\.\d+/.test(latest)) return null;
@@ -113,7 +114,7 @@ export class UpdateChecker {
 
   private async updateNpmGlobal(fromVersion: string): Promise<UpdateOutcome> {
     const cmd = `npm install -g ${this.packageName}@latest`;
-    const result = await runCommand('npm', ['install', '-g', `${this.packageName}@latest`], { timeout: 180000 });
+    const result = await runCommand('npm', ['install', '-g', `${this.packageName}@latest`], { timeout: TIMEOUTS.HEAVY_INSTALL });
     if (result.exitCode === 0) {
       return { success: true, mode: 'npm-global', fromVersion, toVersion: 'latest' };
     }
@@ -130,23 +131,23 @@ export class UpdateChecker {
   // ───── git mode ─────
 
   private async checkGit(): Promise<UpdateCheckResult | null> {
-    const local = await runCommand('git', ['rev-parse', 'HEAD'], { cwd: this.repoDir, timeout: 5000 });
+    const local = await runCommand('git', ['rev-parse', 'HEAD'], { cwd: this.repoDir, timeout: TIMEOUTS.QUICK_PROBE });
     if (local.exitCode !== 0) return null;
     const currentCommit = local.stdout.trim().substring(0, 8);
 
-    const fetch = await runCommand('git', ['fetch', 'origin', '--quiet'], { cwd: this.repoDir, timeout: 15000 });
+    const fetch = await runCommand('git', ['fetch', 'origin', '--quiet'], { cwd: this.repoDir, timeout: TIMEOUTS.NETWORK_READ });
     if (fetch.exitCode !== 0) return null;
 
     let ref = 'origin/master';
-    let remote = await runCommand('git', ['rev-parse', ref], { cwd: this.repoDir, timeout: 5000 });
+    let remote = await runCommand('git', ['rev-parse', ref], { cwd: this.repoDir, timeout: TIMEOUTS.QUICK_PROBE });
     if (remote.exitCode !== 0) {
       ref = 'origin/main';
-      remote = await runCommand('git', ['rev-parse', ref], { cwd: this.repoDir, timeout: 5000 });
+      remote = await runCommand('git', ['rev-parse', ref], { cwd: this.repoDir, timeout: TIMEOUTS.QUICK_PROBE });
       if (remote.exitCode !== 0) return null;
     }
     const remoteCommit = remote.stdout.trim().substring(0, 8);
 
-    const count = await runCommand('git', ['rev-list', '--count', `HEAD..${ref}`], { cwd: this.repoDir, timeout: 5000 });
+    const count = await runCommand('git', ['rev-list', '--count', `HEAD..${ref}`], { cwd: this.repoDir, timeout: TIMEOUTS.QUICK_PROBE });
     const behind = count.exitCode === 0 ? (parseInt(count.stdout.trim(), 10) || 0) : 0;
 
     return {
@@ -164,15 +165,15 @@ export class UpdateChecker {
   private async updateGit(fromVersion: string): Promise<UpdateOutcome> {
     const manualHint = `cd ${this.repoDir} && git pull --ff-only && npm install && npm run build`;
 
-    const pull = await runCommand('git', ['pull', '--ff-only'], { cwd: this.repoDir, timeout: 60000 });
+    const pull = await runCommand('git', ['pull', '--ff-only'], { cwd: this.repoDir, timeout: TIMEOUTS.GIT_PULL });
     if (pull.exitCode !== 0) {
       return { success: false, mode: 'git-clone', fromVersion, manualCommand: manualHint, error: 'git pull failed (working tree dirty?)' };
     }
-    const install = await runCommand('npm', ['install'], { cwd: this.repoDir, timeout: 180000 });
+    const install = await runCommand('npm', ['install'], { cwd: this.repoDir, timeout: TIMEOUTS.HEAVY_INSTALL });
     if (install.exitCode !== 0) {
       return { success: false, mode: 'git-clone', fromVersion, manualCommand: manualHint, error: 'npm install failed' };
     }
-    const build = await runCommand('npm', ['run', 'build'], { cwd: this.repoDir, timeout: 180000 });
+    const build = await runCommand('npm', ['run', 'build'], { cwd: this.repoDir, timeout: TIMEOUTS.HEAVY_INSTALL });
     if (build.exitCode !== 0) {
       return { success: false, mode: 'git-clone', fromVersion, manualCommand: manualHint, error: 'build failed' };
     }

@@ -1,4 +1,5 @@
 import { runCommand } from '../process/ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import type { ToolInfo } from '../../domain/models/ToolInfo.js';
 import { createToolInfo } from '../../domain/models/ToolInfo.js';
 import type { EnvironmentSnapshot, VsInstallation } from '../../domain/models/EnvironmentSnapshot.js';
@@ -39,7 +40,7 @@ export class MsBuildDetector {
       const pathResult = await runCommand(
         process.platform === 'win32' ? 'where' : 'which',
         ['msbuild'],
-        { timeout: 5000 },
+        { timeout: TIMEOUTS.QUICK_PROBE },
       );
       if (pathResult.exitCode === 0) {
         const path = pathResult.stdout.trim().split('\n')[0]!;
@@ -63,7 +64,7 @@ export class MsBuildDetector {
   }
 
   private async getMsBuildVersion(path: string): Promise<string | null> {
-    const result = await runCommand(`"${path}"`, ['/version', '/nologo'], { timeout: 10000 });
+    const result = await runCommand(`"${path}"`, ['/version', '/nologo'], { timeout: TIMEOUTS.TOOL_VERSION });
     if (result.exitCode !== 0) return null;
     const lines = result.stdout.trim().split('\n');
     return lines[lines.length - 1]?.trim() ?? null;

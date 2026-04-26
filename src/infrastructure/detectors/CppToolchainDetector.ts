@@ -3,6 +3,7 @@ import { createToolInfo } from '../../domain/models/ToolInfo.js';
 import type { SdkInfo } from '../../domain/models/SdkInfo.js';
 import type { EnvironmentSnapshot, VsInstallation } from '../../domain/models/EnvironmentSnapshot.js';
 import { runCommand } from '../process/ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -70,11 +71,7 @@ export class CppToolchainDetector {
           vcvarsPath = vcvarsCandidate;
         }
 
-        // Find rc.exe from Windows SDK within VS
-        if (!rcExe?.detected) {
-          const sdkBinDir = join(vs.installPath, 'SDK', 'bin');
-          // rc.exe is typically in Windows SDK, handled by WindowsSdkDetector
-        }
+        // rc.exe lives in the Windows SDK — handled by WindowsSdkDetector, not here
       }
     }
 
@@ -93,7 +90,7 @@ export class CppToolchainDetector {
   }
 
   private async detectToolFromPath(name: string): Promise<ToolInfo> {
-    const result = await runCommand('where', [name], { timeout: 5000 });
+    const result = await runCommand('where', [name], { timeout: TIMEOUTS.QUICK_PROBE });
     if (result.exitCode !== 0) {
       return createToolInfo({ name, detected: false });
     }

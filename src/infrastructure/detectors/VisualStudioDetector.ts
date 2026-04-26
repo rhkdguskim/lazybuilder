@@ -1,4 +1,5 @@
 import { runCommand } from '../process/ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import type { EnvironmentSnapshot, VsInstallation } from '../../domain/models/EnvironmentSnapshot.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,7 +23,7 @@ export class VisualStudioDetector {
     const result = await runCommand(
       `"${vswherePath}"`,
       ['-all', '-format', 'json', '-products', '*', '-requires', 'Microsoft.Component.MSBuild'],
-      { timeout: 15000 },
+      { timeout: TIMEOUTS.TOOL_LIST },
     );
 
     if (result.exitCode !== 0) {

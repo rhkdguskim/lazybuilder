@@ -1,6 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import treeKill from 'tree-kill';
+import { logger, errToLog } from '../logging/Logger.js';
+
+const log = logger.child({ component: 'ProcessRunner' });
 
 export interface ProcessRunnerOptions {
   command: string;
@@ -48,6 +51,8 @@ export class ProcessRunner extends EventEmitter {
       finalShell = shell;
     }
 
+    log.debug('spawn', { command, argsCount: args.length, cwd, shell: finalShell, forceUtf8 });
+
     this.child = spawn(finalCommand, finalArgs, {
       cwd,
       env: mergedEnv,
@@ -65,8 +70,14 @@ export class ProcessRunner extends EventEmitter {
       this.readLines(this.child.stderr, 'stderr');
     }
 
-    this.child.on('error', (err) => this.emit('error', err));
-    this.child.on('close', (code) => this.emit('exit', code ?? 1));
+    this.child.on('error', (err) => {
+      log.warn('spawn error', { command, ...errToLog(err) });
+      this.emit('error', err);
+    });
+    this.child.on('close', (code) => {
+      log.trace('spawn exit', { command, exitCode: code });
+      this.emit('exit', code ?? 1);
+    });
   }
 
   async cancel(): Promise<void> {
@@ -113,6 +124,7 @@ export async function runCommand(
 
     const timer = options?.timeout
       ? setTimeout(() => {
+          log.warn('runCommand timeout', { command, timeoutMs: options.timeout });
           runner.cancel().then(() =>
             resolve({ exitCode: -1, stdout: stdout.join('\n'), stderr: 'timeout' }),
           );

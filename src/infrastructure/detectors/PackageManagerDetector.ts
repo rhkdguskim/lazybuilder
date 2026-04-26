@@ -1,4 +1,5 @@
 import { runCommand } from '../process/ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import type { ToolInfo } from '../../domain/models/ToolInfo.js';
 import { createToolInfo } from '../../domain/models/ToolInfo.js';
 import type { EnvironmentSnapshot } from '../../domain/models/EnvironmentSnapshot.js';
@@ -21,7 +22,7 @@ export class PackageManagerDetector {
   }
 
   private async detectTool(name: string, args: string[], versionRegex?: RegExp): Promise<ToolInfo> {
-    const result = await runCommand(name, args, { timeout: 10000 });
+    const result = await runCommand(name, args, { timeout: TIMEOUTS.TOOL_VERSION });
     if (result.exitCode !== 0 && result.exitCode !== -1) {
       // Some tools return non-zero for --version/help but still output version
     }
@@ -50,7 +51,7 @@ export class PackageManagerDetector {
   }
 
   private async detectGit(): Promise<ToolInfo> {
-    const result = await runCommand('git', ['--version'], { timeout: 5000 });
+    const result = await runCommand('git', ['--version'], { timeout: TIMEOUTS.QUICK_PROBE });
     if (result.exitCode !== 0) {
       return createToolInfo({ name: 'git', detected: false });
     }
@@ -66,7 +67,7 @@ export class PackageManagerDetector {
   private async detectPowershell(): Promise<ToolInfo> {
     // Try pwsh first (PowerShell Core), then powershell
     for (const cmd of ['pwsh', 'powershell']) {
-      const result = await runCommand(cmd, ['--version'], { timeout: 5000 });
+      const result = await runCommand(cmd, ['--version'], { timeout: TIMEOUTS.QUICK_PROBE });
       if (result.exitCode === 0) {
         const match = result.stdout.match(/(\d+\.\d+\.\d+)/);
         return createToolInfo({

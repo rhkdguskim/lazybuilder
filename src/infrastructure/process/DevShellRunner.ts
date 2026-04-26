@@ -3,6 +3,7 @@ import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ProcessRunner, runCommand } from './ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import type { VsInstallation } from '../../domain/models/EnvironmentSnapshot.js';
 
 /**
@@ -186,7 +187,7 @@ export async function captureDevShellEnv(
   const result = await runCommand(
     'cmd',
     ['/C', `${setupCmd} && set`],
-    { timeout: 30000 },
+    { timeout: TIMEOUTS.DEVSHELL_INIT },
   );
 
   if (result.exitCode !== 0) {

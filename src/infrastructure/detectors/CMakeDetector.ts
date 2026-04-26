@@ -1,4 +1,5 @@
 import { runCommand } from '../process/ProcessRunner.js';
+import { TIMEOUTS } from '../../config/timeouts.js';
 import type { ToolInfo } from '../../domain/models/ToolInfo.js';
 import { createToolInfo } from '../../domain/models/ToolInfo.js';
 import type { EnvironmentSnapshot } from '../../domain/models/EnvironmentSnapshot.js';
@@ -13,12 +14,12 @@ export class CMakeDetector {
   }
 
   private async detectCMake(): Promise<ToolInfo> {
-    const result = await runCommand('cmake', ['--version'], { timeout: 5000 });
+    const result = await runCommand('cmake', ['--version'], { timeout: TIMEOUTS.QUICK_PROBE });
     if (result.exitCode !== 0) {
       return createToolInfo({ name: 'cmake', detected: false });
     }
     const match = result.stdout.match(/cmake version (\S+)/);
-    const pathResult = await runCommand(process.platform === 'win32' ? 'where' : 'which', ['cmake'], { timeout: 5000 });
+    const pathResult = await runCommand(process.platform === 'win32' ? 'where' : 'which', ['cmake'], { timeout: TIMEOUTS.QUICK_PROBE });
     return createToolInfo({
       name: 'cmake',
       detected: true,
@@ -29,7 +30,7 @@ export class CMakeDetector {
   }
 
   private async detectNinja(): Promise<ToolInfo> {
-    const result = await runCommand('ninja', ['--version'], { timeout: 5000 });
+    const result = await runCommand('ninja', ['--version'], { timeout: TIMEOUTS.QUICK_PROBE });
     if (result.exitCode !== 0) {
       return createToolInfo({ name: 'ninja', detected: false });
     }
